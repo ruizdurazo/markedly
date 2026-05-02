@@ -448,6 +448,11 @@ if (!gotLock) {
       return filePaths[0];
     });
 
+    ipcMain.handle("md:normalize-path", async (_e, rawPath: unknown) => {
+      if (typeof rawPath !== "string") return null;
+      return validateMdPath(rawPath);
+    });
+
     ipcMain.handle("md:read", async (_e, rawPath: unknown) => {
       if (typeof rawPath !== "string") return { ok: false as const, error: "Invalid path" };
       const p = await validateMdPath(rawPath);

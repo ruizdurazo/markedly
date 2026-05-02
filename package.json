@@ -33,6 +33,15 @@
     "appId": "com.markedly.app",
     "productName": "Markedly",
     "files": ["dist/**", "package.json"],
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown", "mdown", "mkd"],
+        "name": "Markdown document",
+        "description": "Markdown text document",
+        "mimeType": "text/markdown",
+        "role": "Viewer"
+      }
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "target": ["dmg", "zip"],

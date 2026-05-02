@@ -30,7 +30,7 @@ Optional utilities:
 
 ```bash
 npm run build:main       # main + preload only (dist/main, dist/preload)
-npm run build:renderer  # vite build only
+npm run build:renderer   # vite build only
 ```
 
 Typecheck:
@@ -62,3 +62,13 @@ Output under `release/`.
 - `src/renderer` — Vite app: `index.html`, `main.ts`, SCSS, Markdown UI (dev: HMR; prod: `dist/renderer/`)
 - `vite.config.mjs` — `base: './'` for `file://` packaging; dev-only CSP relax for HMR
 - `fixtures/sample.md` — smoke-test document
+
+## Todo
+
+- [x] if a file is already open, when opening a new file, open it in a new tab
+- [x] if a file is already open, when dragging a new file into the app, open it in a new tab
+- [ ] improve the tabs overflow styling
+- [ ] make it possible to drag to reorder the tabs
+- [ ] add app icons
+- [ ] add a toggle for light/dark mode
+- [ ] add a toggle for sans and serif fonts (ignoring code and code blocks,keep them as monospace)

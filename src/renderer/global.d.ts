@@ -6,8 +6,10 @@ declare global {
       newWindow: () => Promise<void>;
       openDialog: () => Promise<string | null>;
       readFile: (path: string) => Promise<ReadResult>;
+      normalizeMarkdownPath: (path: string) => Promise<string | null>;
       resolveMarkdownLink: (basePath: string, href: string) => Promise<ResolvedMdLink | null>;
       openExternal: (url: string) => Promise<void>;
+      openLocalFile: (path: string) => Promise<void>;
       getPathForFile: (file: File) => string;
       onOpenPath: (cb: (path: string) => void) => () => void;
       onOpenPathNewTab: (cb: (path: string) => void) => () => void;

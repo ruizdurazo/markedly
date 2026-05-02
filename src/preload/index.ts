@@ -5,9 +5,12 @@ const api = {
   newWindow: () => ipcRenderer.invoke("md:new-window") as Promise<void>,
   openDialog: () => ipcRenderer.invoke("md:open-dialog") as Promise<string | null>,
   readFile: (path: string) => ipcRenderer.invoke("md:read", path) as Promise<ReadResult>,
+  normalizeMarkdownPath: (path: string) =>
+    ipcRenderer.invoke("md:normalize-path", path) as Promise<string | null>,
   resolveMarkdownLink: (basePath: string, href: string) =>
     ipcRenderer.invoke("md:resolve-link", basePath, href) as Promise<ResolvedMdLink | null>,
   openExternal: (url: string) => ipcRenderer.invoke("md:open-external", url) as Promise<void>,
+  openLocalFile: (path: string) => ipcRenderer.invoke("md:open-local-file", path) as Promise<void>,
   /** Native path for a dropped `File` (required with sandbox; `file.path` is unreliable). */
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   onOpenPath: (cb: (path: string) => void) => {

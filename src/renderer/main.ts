@@ -127,7 +127,10 @@ function renderTabStrip() {
     selectBtn.type = "button";
     selectBtn.className = "tab__select";
     selectBtn.role = "tab";
-    selectBtn.setAttribute("aria-selected", tab.id === activeTabId ? "true" : "false");
+    selectBtn.setAttribute(
+      "aria-selected",
+      tab.id === activeTabId ? "true" : "false",
+    );
     selectBtn.textContent = tabLabel(tab);
 
     const closeBtn = document.createElement("button");
@@ -150,7 +153,7 @@ function renderTabStrip() {
 }
 
 function showWelcomeView() {
-  welcome.hidden = false;
+  welcome.style.display = "flex";
   markdownRoot.hidden = true;
   content.classList.add("empty");
   clearBaseHref();
@@ -158,7 +161,7 @@ function showWelcomeView() {
 }
 
 function showMarkdownView() {
-  welcome.hidden = true;
+  welcome.style.display = "none";
   markdownRoot.hidden = false;
   content.classList.remove("empty");
 }
@@ -185,6 +188,49 @@ function parseMarkdown(md: string): string {
   });
 }
 
+/** Map `/folder/asset` → `./folder/asset` so URLs resolve against `<base href>` (doc dir), not filesystem root. */
+function rewriteRootRelativeAttrValue(value: string): string | null {
+  const t = value.trim();
+  if (!t || t.startsWith("//")) return null;
+  if (!t.startsWith("/")) return null;
+  return `.${t}`;
+}
+
+function normalizeRootRelativeMediaUrls(root: HTMLElement): void {
+  const pairs: { sel: string; attr: string }[] = [
+    { sel: "img[src]", attr: "src" },
+    { sel: "video[src]", attr: "src" },
+    { sel: "audio[src]", attr: "src" },
+    { sel: "source[src]", attr: "src" },
+    { sel: "track[src]", attr: "src" },
+    { sel: "video[poster]", attr: "poster" },
+  ];
+  for (const { sel, attr } of pairs) {
+    for (const el of root.querySelectorAll(sel)) {
+      const v = el.getAttribute(attr);
+      if (v == null) continue;
+      const n = rewriteRootRelativeAttrValue(v);
+      if (n) el.setAttribute(attr, n);
+    }
+  }
+  for (const el of root.querySelectorAll("[srcset]")) {
+    const v = el.getAttribute("srcset");
+    if (v == null) continue;
+    const next = v
+      .split(",")
+      .map((part) => {
+        const trimmed = part.trim();
+        const si = trimmed.lastIndexOf(" ");
+        const urlPart = si >= 0 ? trimmed.slice(0, si).trim() : trimmed;
+        const desc = si >= 0 ? trimmed.slice(si) : "";
+        const n = rewriteRootRelativeAttrValue(urlPart);
+        return n ? `${n}${desc}` : trimmed;
+      })
+      .join(", ");
+    el.setAttribute("srcset", next);
+  }
+}
+
 async function loadPath(filePath: string, options?: { fragment?: string }) {
   const tab = getActiveTab();
   if (!tab) return;
@@ -205,6 +251,7 @@ async function loadPath(filePath: string, options?: { fragment?: string }) {
   syncWindowTitle();
   const html = parseMarkdown(result.content);
   markdownRoot.innerHTML = html;
+  normalizeRootRelativeMediaUrls(markdownRoot);
   showMarkdownView();
   setStatus(result.path);
   renderTabStrip();
@@ -239,12 +286,51 @@ function addTab() {
   void applyActiveTabToView();
 }
 
-function openPathInNewTab(filePath: string, fragment?: string) {
+async function openPathInNewTab(filePath: string, fragment?: string) {
   const id = newTabId();
   tabs.push({ id, path: null, stale: false });
   activeTabId = id;
   renderTabStrip();
-  void loadPath(filePath, fragment ? { fragment } : undefined);
+  await loadPath(filePath, fragment ? { fragment } : undefined);
+}
+
+/** Open from dialog, OS, drop, or in-doc link: dedupe by path, else new tab if active already has a file. */
+async function openFilePathSmart(
+  filePath: string,
+  options?: { fragment?: string },
+) {
+  const fragment = options?.fragment;
+  const normalized = await window.markedly.normalizeMarkdownPath(filePath);
+  if (!normalized) {
+    const active = getActiveTab();
+    if (active?.path) await openPathInNewTab(filePath, fragment);
+    else await loadPath(filePath, options);
+    return;
+  }
+
+  const existing = tabs.find((t) => t.path === normalized);
+  if (existing) {
+    if (existing.id === activeTabId) {
+      if (fragment) {
+        requestAnimationFrame(() => scrollMarkdownToFragment(fragment));
+      }
+      return;
+    }
+    activeTabId = existing.id;
+    renderTabStrip();
+    await applyActiveTabToView();
+    if (fragment) {
+      requestAnimationFrame(() => scrollMarkdownToFragment(fragment));
+    }
+    return;
+  }
+
+  const active = getActiveTab();
+  if (active?.path) {
+    await openPathInNewTab(normalized, fragment);
+  } else {
+    await loadPath(normalized, options);
+  }
 }
 
 function activateTab(tabId: string) {
@@ -342,7 +428,10 @@ async function handleMarkdownLinkClick(e: MouseEvent) {
   const baseFile = activePath();
   if (!baseFile) return;
 
-  const resolved = await window.markedly.resolveMarkdownLink(baseFile, hrefAttr);
+  const resolved = await window.markedly.resolveMarkdownLink(
+    baseFile,
+    hrefAttr,
+  );
   if (!resolved) {
     const t = hrefAttr.trim();
     const looksRelative = !/^[a-z][a-z0-9+.-]*:/i.test(t);
@@ -359,6 +448,12 @@ async function handleMarkdownLinkClick(e: MouseEvent) {
     return;
   }
 
+  if (resolved.kind === "localFile") {
+    e.preventDefault();
+    await window.markedly.openLocalFile(resolved.path);
+    return;
+  }
+
   if (resolved.kind === "fragment") {
     e.preventDefault();
     scrollMarkdownToFragment(resolved.fragment);
@@ -367,7 +462,10 @@ async function handleMarkdownLinkClick(e: MouseEvent) {
 
   if (resolved.kind === "markdown") {
     e.preventDefault();
-    openPathInNewTab(resolved.path, resolved.fragment);
+    void openFilePathSmart(
+      resolved.path,
+      resolved.fragment ? { fragment: resolved.fragment } : undefined,
+    );
     return;
   }
 }
@@ -382,14 +480,26 @@ function setupDropTarget() {
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
     const candidates = pathsFromDataTransfer(e.dataTransfer);
-    const mdPath = candidates.find((p) => /\.(md|markdown|mdown|mkd)$/i.test(p));
-    if (mdPath) {
-      void loadPath(mdPath);
+    const mdPaths = candidates.filter((p) =>
+      /\.(md|markdown|mdown|mkd)$/i.test(p),
+    );
+    if (mdPaths.length === 0) {
+      if (candidates.length > 0) {
+        setStatus("Drop a Markdown file (.md, .markdown, …)");
+      }
       return;
     }
-    if (candidates.length > 0) {
-      setStatus("Drop a Markdown file (.md, .markdown, …)");
-    }
+    const seen = new Set<string>();
+    const unique = mdPaths.filter((p) => {
+      if (seen.has(p)) return false;
+      seen.add(p);
+      return true;
+    });
+    void (async () => {
+      for (const p of unique) {
+        await openFilePathSmart(p);
+      }
+    })();
   };
   window.addEventListener("dragover", onDragOver);
   window.addEventListener("drop", onDrop);
@@ -418,11 +528,11 @@ tabStrip.addEventListener("click", (e) => {
 
 openBtn.addEventListener("click", () => {
   void window.markedly.openDialog().then((p) => {
-    if (p) void loadPath(p);
+    if (p) void openFilePathSmart(p);
   });
 });
 
-window.markedly.onOpenPath((p) => void loadPath(p));
+window.markedly.onOpenPath((p) => void openFilePathSmart(p));
 window.markedly.onOpenPathNewTab((p) => void openPathInNewTab(p));
 window.markedly.onFileChanged((p) => {
   for (const t of tabs) {

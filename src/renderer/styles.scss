@@ -4,6 +4,7 @@
   --background: #fff;
   --foreground: #1d1d1f;
   --muted: #6e6e73;
+  --very-muted: #f7f7f9;
   --border: rgba(0, 0, 0, 0.08);
   --card: #ffffff;
   --accent: #0066cc;
@@ -16,6 +17,7 @@
     --background: #1c1c1e;
     --foreground: #f5f5f7;
     --muted: #a1a1a6;
+    --very-muted: #2c2c2e;
     --border: rgba(255, 255, 255, 0.12);
     --card: #2c2c2e;
     --accent: #0a84ff;
@@ -105,7 +107,7 @@ body.platform-mac .tab-strip {
 
   &:hover {
     color: var(--foreground);
-    background: var(--card);
+    background: var(--very-muted);
 
     .tab__close {
       opacity: 1;
@@ -224,41 +226,52 @@ body.platform-mac .tab-strip {
 }
 
 .welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  padding: 2rem 1rem;
+  padding: 32px;
   -webkit-app-region: no-drag;
 
   h1 {
-    font-size: 1.75rem;
+    font-family: "ITC Souvenir Std";
+    font-size: 32px;
     font-weight: 600;
     letter-spacing: -0.02em;
-    margin: 0 0 24px;
+    margin: 0;
+    // margin: 0 0 24px;
   }
 
   p {
-    margin: 0.5rem 0 1.25rem;
     color: var(--muted);
+    margin-bottom: 32px;
   }
 
   button {
     font: inherit;
     cursor: pointer;
-    padding: 0.45rem 1.25rem;
-    border-radius: 6px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 12px 0 20px;
+    border-radius: 20px;
+    height: 40px;
     border: none;
-    background: var(--accent);
+    background: var(--foreground);
     color: white;
     -webkit-app-region: no-drag;
 
     &:hover {
-      background: var(--accent-hover);
+      background: color-mix(in srgb, var(--foreground) 85%, transparent);
     }
   }
 }
 
 .hint {
   font-size: 0.85rem;
-  margin-top: 1rem !important;
 }
 
 kbd {
@@ -266,7 +279,7 @@ kbd {
   padding: 0.1em 0.45em;
   border-radius: 4px;
   border: 1px solid var(--border);
-  background: var(--card);
+  // background: var(--card);
   font-size: 0.8em;
   font-family: inherit;
   margin: 0 0.1em;

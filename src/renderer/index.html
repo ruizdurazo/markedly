@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:;"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:;"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Markedly</title>
@@ -12,15 +12,24 @@
   <body>
     <header class="titlebar" aria-hidden="true"></header>
     <div class="app">
-      <div class="tab-strip" id="tab-strip" role="tablist" aria-label="Open files"></div>
+      <div
+        class="tab-strip"
+        id="tab-strip"
+        role="tablist"
+        aria-label="Open files"
+      ></div>
       <div class="content-wrapper">
         <main id="content" class="content empty" tabindex="-1">
+          <!-- New tab content -->
           <div class="welcome" id="welcome">
             <h1>Markedly</h1>
             <p>Open a Markdown file or drag one here.</p>
-            <button type="button" id="open-btn">Open…</button>
-            <p class="hint"><kbd>⌘</kbd><kbd>O</kbd></p>
+            <button type="button" id="open-btn">
+              <span>Open file</span>
+              <span class="hint"><kbd>⌘</kbd><kbd>O</kbd></span>
+            </button>
           </div>
+          <!-- Markdown content -->
           <article id="markdown-root" class="markdown-body" hidden></article>
         </main>
       </div>

@@ -1,6 +1,7 @@
 /** Result of resolving `[text](href)` against the open Markdown file path. */
 export type ResolvedMdLink =
   | { kind: "markdown"; path: string; fragment?: string }
+  | { kind: "localFile"; path: string }
   | { kind: "external"; url: string }
   | { kind: "fragment"; fragment: string };
 
