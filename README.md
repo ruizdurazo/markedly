@@ -67,6 +67,7 @@ Output under `release/`.
 
 - [x] if a file is already open, when opening a new file, open it in a new tab
 - [x] if a file is already open, when dragging a new file into the app, open it in a new tab
+- [ ] parse metadata from the top of the file (title, author, date, etc.) and show it as a table
 - [ ] improve the tabs overflow styling
 - [ ] make it possible to drag to reorder the tabs
 - [ ] add app icons

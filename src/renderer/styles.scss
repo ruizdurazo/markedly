@@ -102,10 +102,10 @@ body.platform-mac .tab-strip {
   border-radius: 6px 6px 0 0;
   background: transparent;
   color: var(--muted);
-  cursor: default;
   -webkit-app-region: no-drag;
-
+  
   &:hover {
+    cursor: pointer;
     color: var(--foreground);
     background: var(--very-muted);
 
@@ -143,8 +143,9 @@ body.platform-mac .tab-strip {
   width: 24px;
   height: 24px;
   margin: 0;
-  padding: 0;
-  border: none;
+  padding-bottom: 3px;
+  padding-left: 6px;  
+border: none;
   border-radius: 4px;
   font: inherit;
   font-size: 16px;
@@ -166,8 +167,6 @@ body.platform-mac .tab-strip {
   background: var(--card);
   border-color: var(--border);
   border-bottom-color: transparent;
-  // margin-bottom: -1px;
-  // padding-bottom: 9px;
 
   .tab__close {
     opacity: 0.85;
@@ -182,11 +181,12 @@ body.platform-mac .tab-strip {
   justify-content: center;
   width: 24px;
   height: 24px;
-  margin: 4px;
+  padding-bottom: 3px;
+  padding-left: 6px;
+  margin: 5px 3px 3px 3px;
   font: inherit;
   font-size: 16px;
   line-height: 1;
-  padding: 0;
   border: none;
   border-radius: 4px;
   background: transparent;
@@ -271,23 +271,22 @@ body.platform-mac .tab-strip {
 }
 
 .hint {
-  font-size: 0.85rem;
+  font-size: 12px;
 }
 
 kbd {
   display: inline-block;
-  padding: 0.1em 0.45em;
+  padding: 2px 4px;
   border-radius: 4px;
   border: 1px solid var(--border);
-  // background: var(--card);
-  font-size: 0.8em;
+  font-size: 10px;
   font-family: inherit;
-  margin: 0 0.1em;
+  margin: 0;
 }
 
 .status {
   flex-shrink: 0;
-  padding: 0.35rem 1rem 0.5rem;
+  padding: 8px 16px;
   font-size: 11px;
   color: var(--muted);
   border-top: 1px solid var(--border);
@@ -298,7 +297,7 @@ kbd {
 }
 
 .markdown-body {
-  padding-bottom: 2rem;
+  padding-bottom: 32px;
   -webkit-app-region: no-drag;
 
   > *:first-child {
@@ -308,53 +307,67 @@ kbd {
   h1,
   h2,
   h3,
-  h4 {
+  h4,
+  h5,
+  h6 {
     line-height: 1.25;
     font-weight: 600;
     letter-spacing: -0.02em;
-    margin: 1.5em 0 0.65em;
+    margin: 32px 0 16px;
   }
 
   h1 {
-    font-size: 1.65rem;
+    font-size: 28px;
     border-bottom: 1px solid var(--border);
-    padding-bottom: 0.35em;
+    padding-bottom: 8px;
   }
 
   h2 {
-    font-size: 1.35rem;
+    font-size: 24px;
     border-bottom: 1px solid var(--border);
-    padding-bottom: 0.25em;
+    padding-bottom: 6px;
   }
 
   h3 {
-    font-size: 1.15rem;
+    font-size: 22px;
+  }
+
+  h4 {
+    font-size: 20px;
+  }
+
+  h5 {
+    font-size: 18px;
+  }
+
+  h6 {
+    font-size: 16px;
   }
 
   p,
   ul,
   ol,
   blockquote {
-    margin: 0.75em 0;
+    margin: 16px 0;
   }
 
   ul,
   ol {
-    padding-left: 1.5em;
+    padding-left: 32px;
   }
 
   li {
-    margin: 0.25em 0;
+    margin: 6px 0;
 
     > input[type="checkbox"] {
-      margin-right: 0.35em;
+      margin-right: 8px;
       pointer-events: none;
     }
   }
 
   blockquote {
     margin-left: 0;
-    padding-left: 1em;
+    padding-left: 16px;
     border-left: 3px solid var(--border);
     color: var(--muted);
   }
@@ -370,16 +383,16 @@ kbd {
 
   code {
     font-family: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
-    font-size: 0.9em;
-    padding: 0.12em 0.35em;
+    font-size: 15px;
+    padding: 4px 8px;
     border-radius: 4px;
     background: var(--code-background);
     border: 1px solid var(--border);
   }
 
   pre {
-    margin: 1em 0;
-    padding: 1rem;
+    margin: 16px 0;
+    padding: 16px;
     overflow-x: auto;
     border-radius: 8px;
     border: 1px solid var(--border);
@@ -387,7 +400,7 @@ kbd {
 
     code {
       font-family: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
-      font-size: 0.82rem;
+      font-size: 14px;
       line-height: 1.45;
       padding: 0;
       border: none;
@@ -398,20 +411,20 @@ kbd {
   hr {
     border: none;
     border-top: 1px solid var(--border);
-    margin: 2em 0;
+    margin: 32px 0;
   }
 
   table {
     width: 100%;
     border-collapse: collapse;
-    margin: 1em 0;
-    font-size: 0.95em;
+    margin: 16px 0;
+    font-size: 15px;
   }
 
   th,
   td {
     border: 1px solid var(--border);
-    padding: 0.45em 0.65em;
+    padding: 8px 12px;
     text-align: left;
   }
 
@@ -427,7 +440,7 @@ kbd {
   }
 
   .mermaid {
-    margin: 1.25em 0;
+    margin: 24px 0;
     display: flex;
     justify-content: center;
     overflow-x: auto;
