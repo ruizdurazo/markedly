@@ -1,7 +1,11 @@
 import "./styles.scss";
 import DOMPurify from "dompurify";
-import hljs from "highlight.js";
 import { marked } from "marked";
+import { markedRenderingExtensions } from "./marked-extensions";
+import {
+  formatMetadataCell,
+  splitFrontmatter,
+} from "./frontmatter";
 import ghDark from "highlight.js/styles/github-dark.css?inline";
 import ghLight from "highlight.js/styles/github.css?inline";
 
@@ -26,36 +30,19 @@ function injectHighlighterTheme() {
 
 injectHighlighterTheme();
 
-marked.use({
-  gfm: true,
-  breaks: false,
-  pedantic: false,
-  renderer: {
-    code({ text, lang }) {
-      if (lang === "mermaid") {
-        return `<div class="mermaid">${escapeHtml(text)}</div>`;
-      }
-      if (lang && hljs.getLanguage(lang)) {
-        try {
-          const highlighted = hljs.highlight(text, { language: lang }).value;
-          return `<pre><code class="hljs language-${escapeHtml(lang)}">${highlighted}</code></pre>`;
-        } catch {
-          /* fall through */
-        }
-      }
-      return `<pre><code class="hljs">${escapeHtml(text)}</code></pre>`;
-    },
-  },
-});
+marked.use(...markedRenderingExtensions);
 
 const purify = DOMPurify(window);
 
 const welcome = document.querySelector<HTMLElement>("#welcome")!;
 const markdownRoot = document.querySelector<HTMLElement>("#markdown-root")!;
 const content = document.querySelector<HTMLElement>("#content")!;
+const scrollContainer = document.querySelector<HTMLElement>(".content-wrapper")!;
 const statusEl = document.querySelector<HTMLElement>("#status")!;
 const openBtn = document.querySelector<HTMLButtonElement>("#open-btn")!;
 const tabStrip = document.querySelector<HTMLElement>("#tab-strip")!;
+
+let ignoreScrollEvents = false;
 
 if (navigator.userAgent.toLowerCase().includes("mac")) {
   document.body.classList.add("platform-mac");
@@ -65,13 +52,15 @@ type Tab = {
   id: string;
   path: string | null;
   stale: boolean;
+  /** Last vertical scroll position for this tab in `.content-wrapper`. */
+  scrollTop: number;
 };
 
 function newTabId(): string {
   return crypto.randomUUID();
 }
 
-let tabs: Tab[] = [{ id: newTabId(), path: null, stale: false }];
+let tabs: Tab[] = [{ id: newTabId(), path: null, stale: false, scrollTop: 0 }];
 let activeTabId = tabs[0]!.id;
 
 let baseEl: HTMLBaseElement | null = null;
@@ -82,6 +71,11 @@ function getActiveTab(): Tab | undefined {
 
 function activePath(): string | null {
   return getActiveTab()?.path ?? null;
+}
+
+function captureScrollForTabId(tabId: string) {
+  const t = tabs.find((x) => x.id === tabId);
+  if (t) t.scrollTop = scrollContainer.scrollTop;
 }
 
 function setBaseHref(dirUrl: string) {
@@ -188,6 +182,23 @@ function parseMarkdown(md: string): string {
   });
 }
 
+function buildMetadataTableHtml(metadata: Record<string, unknown>): string {
+  const entries = Object.entries(metadata).filter(([k]) => k.length > 0);
+  if (entries.length === 0) return "";
+  const rows = entries
+    .map(
+      ([key, value]) =>
+        `<tr><th scope="row">${escapeHtml(key)}</th><td>${escapeHtml(formatMetadataCell(value))}</td></tr>`,
+    )
+    .join("");
+  /* Flat table (no thead/tbody): nested parsing/sanitization edge cases in some engines */
+  const raw = `<section class="doc-metadata" aria-label="Document metadata"><table class="doc-metadata__table"><tr><th scope="col">Field</th><th scope="col">Value</th></tr>${rows}</table></section>`;
+  return purify.sanitize(raw, {
+    ADD_ATTR: ["id", "class", "style", "scope"],
+    ADD_TAGS: ["svg", "path", "g", "marker", "defs", "use"],
+  });
+}
+
 /** Map `/folder/asset` → `./folder/asset` so URLs resolve against `<base href>` (doc dir), not filesystem root. */
 function rewriteRootRelativeAttrValue(value: string): string | null {
   const t = value.trim();
@@ -243,13 +254,20 @@ async function loadPath(filePath: string, options?: { fragment?: string }) {
     tab.stale = false;
     showWelcomeView();
     renderTabStrip();
+    ignoreScrollEvents = false;
     return;
   }
+  ignoreScrollEvents = true;
   tab.path = result.path;
   tab.stale = false;
   setBaseHref(result.dirUrl);
   syncWindowTitle();
-  const html = parseMarkdown(result.content);
+  const { body, metadata } = splitFrontmatter(result.content);
+  const metaHtml =
+    metadata && Object.keys(metadata).length > 0
+      ? buildMetadataTableHtml(metadata)
+      : "";
+  const html = metaHtml + parseMarkdown(body);
   markdownRoot.innerHTML = html;
   normalizeRootRelativeMediaUrls(markdownRoot);
   showMarkdownView();
@@ -261,34 +279,52 @@ async function loadPath(filePath: string, options?: { fragment?: string }) {
     setStatus(`${result.path} (diagram error)`);
   }
   const frag = options?.fragment;
-  if (frag) {
-    requestAnimationFrame(() => scrollMarkdownToFragment(frag));
-  }
+  requestAnimationFrame(() => {
+    if (frag) {
+      scrollMarkdownToFragment(frag);
+    } else {
+      scrollContainer.scrollTop = tab.scrollTop;
+    }
+    requestAnimationFrame(() => {
+      ignoreScrollEvents = false;
+    });
+  });
 }
 
 async function applyActiveTabToView() {
   const t = getActiveTab();
   if (!t) return;
   if (!t.path) {
+    ignoreScrollEvents = true;
     setStatus("");
     showWelcomeView();
     renderTabStrip();
+    requestAnimationFrame(() => {
+      scrollContainer.scrollTop = t.scrollTop;
+      requestAnimationFrame(() => {
+        ignoreScrollEvents = false;
+      });
+    });
     return;
   }
   await loadPath(t.path);
 }
 
 function addTab() {
+  captureScrollForTabId(activeTabId);
+  ignoreScrollEvents = true;
   const id = newTabId();
-  tabs.push({ id, path: null, stale: false });
+  tabs.push({ id, path: null, stale: false, scrollTop: 0 });
   activeTabId = id;
   renderTabStrip();
   void applyActiveTabToView();
 }
 
 async function openPathInNewTab(filePath: string, fragment?: string) {
+  captureScrollForTabId(activeTabId);
+  ignoreScrollEvents = true;
   const id = newTabId();
-  tabs.push({ id, path: null, stale: false });
+  tabs.push({ id, path: null, stale: false, scrollTop: 0 });
   activeTabId = id;
   renderTabStrip();
   await loadPath(filePath, fragment ? { fragment } : undefined);
@@ -316,6 +352,8 @@ async function openFilePathSmart(
       }
       return;
     }
+    captureScrollForTabId(activeTabId);
+    ignoreScrollEvents = true;
     activeTabId = existing.id;
     renderTabStrip();
     await applyActiveTabToView();
@@ -335,6 +373,8 @@ async function openFilePathSmart(
 
 function activateTab(tabId: string) {
   if (!tabs.some((t) => t.id === tabId)) return;
+  captureScrollForTabId(activeTabId);
+  ignoreScrollEvents = true;
   activeTabId = tabId;
   renderTabStrip();
   void applyActiveTabToView();
@@ -350,6 +390,7 @@ function closeTab(tabId: string) {
   if (idx < 0) return;
   tabs.splice(idx, 1);
   if (activeTabId === tabId) {
+    ignoreScrollEvents = true;
     activeTabId = tabs[Math.max(0, idx - 1)]!.id;
     renderTabStrip();
     void applyActiveTabToView();
@@ -551,5 +592,16 @@ window.markedly.onCloseTab(() => closeActiveTabOrWindow());
 
 setupDropTarget();
 setupMarkdownLinks();
+
+scrollContainer.addEventListener(
+  "scroll",
+  () => {
+    if (ignoreScrollEvents) return;
+    const t = getActiveTab();
+    if (t) t.scrollTop = scrollContainer.scrollTop;
+  },
+  { passive: true },
+);
+
 renderTabStrip();
 syncWindowTitle();

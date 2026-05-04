@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Markedly Quick Look</string>
+	<key>CFBundleExecutable</key>
+	<string>PreviewExtension</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.markedly.app.QuickLookPreview</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>MarkedlyQuickLook</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>MacOSX</string>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>0.1.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>QLSupportedContentTypes</key>
+			<array>
+				<string>public.markdown</string>
+				<string>net.daringfireball.markdown</string>
+			</array>
+			<key>QLSupportsSearchableItems</key>
+			<false/>
+		</dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.quicklook.preview</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>PreviewExtension.PreviewViewController</string>
+	</dict>
+	<key>QLJS</key>
+	<dict>
+		<key>loadingStrategy</key>
+		<string>waitForSignal</string>
+		<key>pagePath</key>
+		<string>preview.html</string>
+		<key>preferredContentSize</key>
+		<string>{800,600}</string>
+		<key>transparentBackground</key>
+		<false/>
+	</dict>
+</dict>
+</plist>

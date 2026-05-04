@@ -300,6 +300,46 @@ kbd {
   padding-bottom: 32px;
   -webkit-app-region: no-drag;
 
+  .doc-metadata {
+    margin: 0 0 24px;
+  }
+
+  .doc-metadata__table {
+    width: 100%;
+    max-width: 720px;
+    border-collapse: collapse;
+    font-size: 14px;
+    table-layout: fixed;
+  }
+
+  .doc-metadata__table th,
+  .doc-metadata__table td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+    word-break: break-word;
+  }
+
+  .doc-metadata__table > tr:first-child th {
+    background: var(--card);
+    font-weight: 600;
+    width: 160px;
+  }
+
+  .doc-metadata__table > tr:not(:first-child) th[scope="row"] {
+    background: var(--very-muted);
+    font-weight: 500;
+    color: var(--muted);
+    width: 160px;
+  }
+
+  .doc-metadata__table > tr:not(:first-child) td {
+    font-family: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+  }
+
   > *:first-child {
     margin-top: 0;
   }

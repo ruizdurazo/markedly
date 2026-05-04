@@ -7,9 +7,11 @@
   "license": "MIT",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "generate:emoji": "node scripts/generate-emoji-map.mjs",
     "start": "npm run build && electron .",
     "dev": "node scripts/dev.mjs",
     "build:main": "node scripts/build-main.mjs",
+    "build:quicklook": "node scripts/build-quicklook.mjs",
     "build:renderer": "vite build",
     "pack": "npm run build && electron-builder --mac dir",
     "typecheck": "tsc --noEmit"
@@ -18,13 +20,17 @@
     "dompurify": "^3.2.4",
     "highlight.js": "^11.11.1",
     "marked": "^15.0.7",
-    "mermaid": "^11.4.1"
+    "marked-emoji": "^2.0.3",
+    "mermaid": "^11.4.1",
+    "yaml": "^2.8.4"
   },
   "devDependencies": {
     "@types/node": "^22.13.5",
     "electron": "^34.2.0",
     "electron-builder": "^25.1.8",
     "esbuild": "^0.25.0",
+    "gemoji": "^8.1.0",
+    "quicklookjs": "^1.0.1",
     "sass": "^1.85.0",
     "typescript": "^5.7.3",
     "vite": "^6.2.0"
@@ -32,10 +38,26 @@
   "build": {
     "appId": "com.markedly.app",
     "productName": "Markedly",
-    "files": ["dist/**", "package.json"],
+    "files": [
+      "dist/**",
+      "!dist/quicklook/**",
+      "package.json"
+    ],
+    "extraFiles": [
+      {
+        "from": "node_modules/quicklookjs/dist/PreviewExtension.appex",
+        "to": "PlugIns/PreviewExtension.appex"
+      }
+    ],
+    "afterPack": "scripts/after-pack.cjs",
     "fileAssociations": [
       {
-        "ext": ["md", "markdown", "mdown", "mkd"],
+        "ext": [
+          "md",
+          "markdown",
+          "mdown",
+          "mkd"
+        ],
         "name": "Markdown document",
         "description": "Markdown text document",
         "mimeType": "text/markdown",
@@ -44,7 +66,10 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "hardenedRuntime": true
     },
     "directories": {
