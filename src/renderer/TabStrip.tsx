@@ -21,26 +21,19 @@ export function TabStrip({
   onNew,
 }: TabStripProps) {
   return (
-    <div
-      className={styles.tabStrip}
-      role="tablist"
-      aria-label="Open files"
-    >
+    <div className={styles.tabStrip} role="tablist" aria-label="Open files">
       {tabs.map((tab) => (
-        <div
+        <button
           key={tab.id}
-          className={`${styles.tab} ${tab.id === activeTabId ? styles.tabActive : ""}`}
           data-tab-id={tab.id}
+          className={`${styles.tab} ${styles.tabSelect} ${tab.id === activeTabId ? styles.tabActive : ""}`}
+          onClick={() => onSelect(tab.id)}
+          type="button"
+          // className={styles.tabSelect}
+          role="tab"
+          aria-selected={tab.id === activeTabId ? "true" : "false"}
         >
-          <button
-            type="button"
-            className={styles.tabSelect}
-            role="tab"
-            aria-selected={tab.id === activeTabId ? "true" : "false"}
-            onClick={() => onSelect(tab.id)}
-          >
-            {tab.label}
-          </button>
+          <div>{tab.label}</div>
           <button
             type="button"
             className={styles.tabClose}
@@ -53,7 +46,7 @@ export function TabStrip({
           >
             ×
           </button>
-        </div>
+        </button>
       ))}
       <button
         type="button"

@@ -86,9 +86,9 @@ Output under `release/`. For Finder to discover the Quick Look extension, move t
 - [x] add support for emoji (github syntax)
 - [x] side panel - folders and files: add a directory tree structure for a folder and its files in a side panel tray on the left hand side, make the panel collapsible. Folders are collapsible too. Only show .md files. Clicking on an md file opens it in a new tab. by default no folder is open, user must pick to open a folder.
 - [x] side panel - toc: add a table of contents side panel tray on the right hand side, make it collapsible. Show the headers' (h1, h2, etc.) text title and add offsets to show how they are nested. Clicking on an item scrolls the title into view. 
-- [ ] search: add search with cmd+f, and highlight the search results. search only the current document tab.
+- [ ] search: add search with cmd+f, and highlight the search results. search only the current document tab. add the search input to the center of the top titlebar.
 - [ ] drag tabs: make it possible to drag to reorder the tabs
-- [ ] tabs horizontal scroll: improve the tabs overflow styling
+- [ ] tabs horizontal scroll: improve the tabs overflow styling (hide default scroll bar, make an ultra thin custom one)
 - [ ] add app icons
-- [ ] add a toggle for light/dark mode
+- [ ] dark mode: add a toggle for light/dark mode
 - [ ] optional: add a toggle for sans and serif fonts (ignoring code and code blocks,keep them as monospace)

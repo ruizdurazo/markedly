@@ -674,11 +674,7 @@ export function App() {
       const onMove = (ev: PointerEvent) => {
         const dx = ev.clientX - startX;
         setTocPanelWidthPx(
-          clampPx(
-            startW - dx,
-            TOC_PANEL_WIDTH_MIN_PX,
-            TOC_PANEL_WIDTH_MAX_PX,
-          ),
+          clampPx(startW - dx, TOC_PANEL_WIDTH_MIN_PX, TOC_PANEL_WIDTH_MAX_PX),
         );
       };
       const onUp = (ev: PointerEvent) => {
@@ -787,6 +783,7 @@ export function App() {
               void openMarkdownFromTree(path);
             }}
           />
+
           {filePanelExpanded ? (
             <div
               className={appStyles.resizeHandle}
@@ -799,6 +796,7 @@ export function App() {
               }
             />
           ) : null}
+
           <div className={appStyles.mainColumn}>
             <TabStrip
               tabs={tabStripTabs}
@@ -828,6 +826,7 @@ export function App() {
               </footer>
             )}
           </div>
+
           {tocPanelExpanded ? (
             <div
               className={appStyles.resizeHandle}
@@ -840,6 +839,7 @@ export function App() {
               }
             />
           ) : null}
+
           <TocPanel
             id="toc-panel"
             panelExpanded={tocPanelExpanded}
