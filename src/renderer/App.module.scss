@@ -1,0 +1,106 @@
+.app {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  -webkit-app-region: no-drag;
+}
+
+.bodyRow {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  min-width: 0;
+}
+
+.mainColumn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.titlebar {
+  flex-shrink: 0;
+  height: 44px;
+  border-bottom: 1px solid var(--border);
+}
+
+.titlebarRow {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+  -webkit-app-region: drag;
+}
+
+:global(body.platform-mac) .titlebarRow {
+  padding-left: 72px;
+}
+
+.titlebarCluster {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+}
+
+.titlebarFlexSpacer {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.titlebarIconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--foreground);
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+}
+
+.contentWrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.main {
+  flex: 1;
+  -webkit-app-region: no-drag;
+  padding: 48px 24px;
+  max-width: 700px;
+  margin: 0 auto;
+  width: 100%;
+
+  &:focus {
+    outline: none;
+  }
+}
+
+.mainEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

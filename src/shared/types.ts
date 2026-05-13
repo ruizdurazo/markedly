@@ -18,3 +18,24 @@ export type ReadOk = {
 export type ReadErr = { ok: false; error: string };
 
 export type ReadResult = ReadOk | ReadErr;
+
+export type DirTreeDir = {
+  type: "dir";
+  name: string;
+  path: string;
+  children: DirTreeNode[];
+};
+
+export type DirTreeFile = {
+  type: "file";
+  name: string;
+  path: string;
+};
+
+export type DirTreeNode = DirTreeDir | DirTreeFile;
+
+export type ListMarkdownTreeOk = { ok: true; root: string; tree: DirTreeNode[] };
+
+export type ListMarkdownTreeErr = { ok: false; error: string };
+
+export type ListMarkdownTreeResult = ListMarkdownTreeOk | ListMarkdownTreeErr;

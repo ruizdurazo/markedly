@@ -1,10 +1,12 @@
-import type { ReadResult, ResolvedMdLink } from "../shared/types.js";
+import type { ListMarkdownTreeResult, ReadResult, ResolvedMdLink } from "../shared/types.js";
 
 declare global {
   interface Window {
     markedly: {
       newWindow: () => Promise<void>;
       openDialog: () => Promise<string | null>;
+      openFolderDialog: () => Promise<string | null>;
+      listMarkdownTree: (rootPath: string) => Promise<ListMarkdownTreeResult>;
       readFile: (path: string) => Promise<ReadResult>;
       normalizeMarkdownPath: (path: string) => Promise<string | null>;
       resolveMarkdownLink: (basePath: string, href: string) => Promise<ResolvedMdLink | null>;
@@ -17,6 +19,7 @@ declare global {
       onThemeChanged: (cb: () => void) => () => void;
       onNewTab: (cb: () => void) => () => void;
       onCloseTab: (cb: () => void) => () => void;
+      onRequestOpenFolder: (cb: () => void) => () => void;
     };
   }
 }

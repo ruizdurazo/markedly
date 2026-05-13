@@ -1,0 +1,57 @@
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px;
+  -webkit-app-region: no-drag;
+
+  h1 {
+    font-family: "ITC Souvenir Std";
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+
+  p {
+    color: var(--muted);
+    margin-bottom: 32px;
+  }
+}
+
+.openButton {
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px 0 20px;
+  border-radius: 20px;
+  height: 40px;
+  border: none;
+  background: var(--foreground);
+  color: white;
+  -webkit-app-region: no-drag;
+
+  &:hover {
+    background: color-mix(in srgb, var(--foreground) 85%, transparent);
+  }
+
+  :global(kbd) {
+    display: inline-block;
+    padding: 2px 4px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    font-size: 10px;
+    font-family: inherit;
+    margin: 0;
+  }
+}
+
+.hint {
+  font-size: 12px;
+}

@@ -1,5 +1,6 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -32,7 +33,7 @@ function devCspPlugin() {
 export default defineConfig({
   root: resolve(__dirname, "src/renderer"),
   base: "./",
-  plugins: [devCspPlugin()],
+  plugins: [react(), devCspPlugin()],
   build: {
     outDir: resolve(__dirname, "dist/renderer"),
     emptyOutDir: true,

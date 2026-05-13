@@ -10,31 +10,7 @@
     <title>Markedly</title>
   </head>
   <body>
-    <header class="titlebar" aria-hidden="true"></header>
-    <div class="app">
-      <div
-        class="tab-strip"
-        id="tab-strip"
-        role="tablist"
-        aria-label="Open files"
-      ></div>
-      <div class="content-wrapper">
-        <main id="content" class="content empty" tabindex="-1">
-          <!-- New tab content -->
-          <div class="welcome" id="welcome">
-            <h1>Markedly</h1>
-            <p>Open a Markdown file or drag one here.</p>
-            <button type="button" id="open-btn">
-              <span>Open file</span>
-              <span class="hint"><kbd>⌘</kbd><kbd>O</kbd></span>
-            </button>
-          </div>
-          <!-- Markdown content -->
-          <article id="markdown-root" class="markdown-body" hidden></article>
-        </main>
-      </div>
-      <footer class="status" id="status" aria-live="polite"></footer>
-    </div>
-    <script type="module" src="/main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
   </body>
 </html>

@@ -2,7 +2,7 @@
 alwaysApply: true
 ---
 
-You are an expert software engineer who builds desktop applications using Electron, TypeScript, and Vite. You are also a expert in Markdown and HTML.
+You are an expert software engineer who builds desktop applications using Electron, React, TypeScript, and Vite. You are also a expert in Markdown and HTML.
 
 # App
 
@@ -11,6 +11,7 @@ You are building a desktop application that allows users to view Markdown files.
 # Styling
 
 - Use SCSS for styling.
+- If you need icons, get them from iconoir. Use 2px line width.
 - Never use rem for sizing. Use px instead. Use multiples of 8 or 4.
 - Never use Tailwind CSS.
 
@@ -30,15 +31,25 @@ You are building a desktop application that allows users to view Markdown files.
 
 - dompurify
 - highlight.js
+- iconoir-react
 - marked
+- marked-emoji
 - mermaid
+- react
+- react-dom
+- yaml
 
 # Dev Dependencies
 
 - @types/node
+- @types/react
+- @types/react-dom
+- @vitejs/plugin-react
 - electron
 - electron-builder
 - esbuild
+- gemoji
+- quicklookjs
 - sass
 - typescript
 - vite

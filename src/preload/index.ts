@@ -1,9 +1,12 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { ReadResult, ResolvedMdLink } from "../shared/types.js";
+import type { ListMarkdownTreeResult, ReadResult, ResolvedMdLink } from "../shared/types.js";
 
 const api = {
   newWindow: () => ipcRenderer.invoke("md:new-window") as Promise<void>,
   openDialog: () => ipcRenderer.invoke("md:open-dialog") as Promise<string | null>,
+  openFolderDialog: () => ipcRenderer.invoke("md:open-folder-dialog") as Promise<string | null>,
+  listMarkdownTree: (rootPath: string) =>
+    ipcRenderer.invoke("md:list-markdown-tree", rootPath) as Promise<ListMarkdownTreeResult>,
   readFile: (path: string) => ipcRenderer.invoke("md:read", path) as Promise<ReadResult>,
   normalizeMarkdownPath: (path: string) =>
     ipcRenderer.invoke("md:normalize-path", path) as Promise<string | null>,
@@ -42,6 +45,11 @@ const api = {
     const fn = () => cb();
     ipcRenderer.on("md:close-tab", fn);
     return () => ipcRenderer.removeListener("md:close-tab", fn);
+  },
+  onRequestOpenFolder: (cb: () => void) => {
+    const fn = () => cb();
+    ipcRenderer.on("md:request-open-folder", fn);
+    return () => ipcRenderer.removeListener("md:request-open-folder", fn);
   },
 };
 

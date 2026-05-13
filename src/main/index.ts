@@ -8,10 +8,10 @@ import {
   shell,
 } from "electron";
 import { watch } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { ResolvedMdLink } from "../shared/types.js";
+import type { DirTreeNode, ListMarkdownTreeResult, ResolvedMdLink } from "../shared/types.js";
 
 if (!app.isPackaged) {
   app.commandLine.appendSwitch("disable-http-cache");
@@ -60,6 +60,53 @@ function isMarkdownExtension(filePath: string): boolean {
     lower.endsWith(".mdown") ||
     lower.endsWith(".mkd")
   );
+}
+
+const MAX_TREE_DEPTH = 48;
+
+async function validateDirPath(dirPath: string): Promise<string | null> {
+  try {
+    const p = resolve(dirPath);
+    const s = await stat(p);
+    if (!s.isDirectory()) return null;
+    return p;
+  } catch {
+    return null;
+  }
+}
+
+function isPathInsideRoot(root: string, candidate: string): boolean {
+  const rRoot = resolve(root);
+  const rCand = resolve(candidate);
+  if (rCand === rRoot) return true;
+  const prefix = rRoot.endsWith(sep) ? rRoot : rRoot + sep;
+  return rCand.startsWith(prefix);
+}
+
+async function listMarkdownDirTree(
+  rootDir: string,
+  currentDir: string,
+  depth: number,
+): Promise<DirTreeNode[]> {
+  if (depth > MAX_TREE_DEPTH) return [];
+  const entries = await readdir(currentDir, { withFileTypes: true });
+  const nodes: DirTreeNode[] = [];
+  for (const ent of entries) {
+    if (ent.name.startsWith(".")) continue;
+    const full = join(currentDir, ent.name);
+    if (!isPathInsideRoot(rootDir, full)) continue;
+    if (ent.isDirectory()) {
+      const children = await listMarkdownDirTree(rootDir, full, depth + 1);
+      nodes.push({ type: "dir", name: ent.name, path: full, children });
+    } else if (ent.isFile() && isMarkdownExtension(full)) {
+      nodes.push({ type: "file", name: ent.name, path: full });
+    }
+  }
+  nodes.sort((a, b) => {
+    if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+  return nodes;
 }
 
 async function resolveMarkdownHref(baseFilePath: string, href: string): Promise<ResolvedMdLink | null> {
@@ -337,6 +384,14 @@ function buildMenu() {
             }
           },
         },
+        {
+          label: "Open Folder…",
+          accelerator: "CmdOrCtrl+Shift+O",
+          click: () => {
+            const win = getTargetWindowForOpen();
+            win?.webContents.send("md:request-open-folder");
+          },
+        },
       ],
     },
     {
@@ -446,6 +501,29 @@ if (!gotLock) {
       });
       if (canceled || !filePaths[0]) return null;
       return filePaths[0];
+    });
+
+    ipcMain.handle("md:open-folder-dialog", async (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender) ?? getDialogParentWindow();
+      if (!win) return null;
+      const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+        properties: ["openDirectory", "createDirectory"],
+      });
+      if (canceled || !filePaths[0]) return null;
+      return validateDirPath(filePaths[0]);
+    });
+
+    ipcMain.handle("md:list-markdown-tree", async (_e, rawRoot: unknown): Promise<ListMarkdownTreeResult> => {
+      if (typeof rawRoot !== "string") return { ok: false, error: "Invalid path" };
+      const root = await validateDirPath(rawRoot);
+      if (!root) return { ok: false, error: "Not a folder" };
+      try {
+        const tree = await listMarkdownDirTree(root, root, 0);
+        return { ok: true, root, tree };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Read failed";
+        return { ok: false, error: message };
+      }
     });
 
     ipcMain.handle("md:normalize-path", async (_e, rawPath: unknown) => {

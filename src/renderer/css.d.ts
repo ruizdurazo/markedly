@@ -3,9 +3,10 @@ declare module "*.css" {
   export default content;
 }
 
+/** Vite CSS modules (`.module.scss` matches `*.scss` last — use one declaration for all `.scss`) */
 declare module "*.scss" {
-  const content: string;
-  export default content;
+  const classes: { readonly [key: string]: string };
+  export default classes;
 }
 
 declare module "*?inline" {
