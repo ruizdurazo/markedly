@@ -15,6 +15,20 @@
   min-width: 0;
 }
 
+.resizeHandle {
+  flex-shrink: 0;
+  width: 4px;
+  align-self: stretch;
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
+  background: transparent;
+
+  &:hover {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  }
+}
+
 .mainColumn {
   flex: 1;
   display: flex;

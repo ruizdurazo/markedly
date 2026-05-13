@@ -16,8 +16,8 @@
 }
 
 .panelExpanded {
-  width: 220px;
-  min-width: 220px;
+  flex: 0 0 auto;
+  min-height: 0;
 }
 
 .inner {
@@ -47,9 +47,9 @@
   margin: 0;
   padding: 0 0 0 4px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 16px;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
 }

@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { flushSync } from "react-dom";
 import { formatMetadataCell, splitFrontmatter } from "./frontmatter";
@@ -49,6 +50,17 @@ const titlebarIconProps = {
   strokeWidth: 2,
 } as const;
 
+const DEFAULT_FILE_PANEL_WIDTH_PX = 200;
+const DEFAULT_TOC_PANEL_WIDTH_PX = 220;
+const FILE_PANEL_WIDTH_MIN_PX = 160;
+const FILE_PANEL_WIDTH_MAX_PX = 480;
+const TOC_PANEL_WIDTH_MIN_PX = 160;
+const TOC_PANEL_WIDTH_MAX_PX = 480;
+
+function clampPx(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 function pathsFromDataTransfer(dt: DataTransfer | null): string[] {
   if (!dt?.files?.length) return [];
   const paths: string[] = [];
@@ -81,6 +93,12 @@ export function App() {
   const [showWelcome, setShowWelcome] = useState(true);
   const [filePanelExpanded, setFilePanelExpanded] = useState(true);
   const [tocPanelExpanded, setTocPanelExpanded] = useState(true);
+  const [filePanelWidthPx, setFilePanelWidthPx] = useState(
+    DEFAULT_FILE_PANEL_WIDTH_PX,
+  );
+  const [tocPanelWidthPx, setTocPanelWidthPx] = useState(
+    DEFAULT_TOC_PANEL_WIDTH_PX,
+  );
   const [tocEntries, setTocEntries] = useState<TocEntry[]>([]);
   const [rootFolderPath, setRootFolderPath] = useState<string | null>(null);
   const [treeNodes, setTreeNodes] = useState<DirTreeNode[]>([]);
@@ -613,6 +631,70 @@ export function App() {
     setTocPanelExpanded((v) => !v);
   }, []);
 
+  const onFilePanelResizePointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const el = e.currentTarget;
+      el.setPointerCapture(e.pointerId);
+      const startX = e.clientX;
+      const startW = filePanelWidthPx;
+      const onMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - startX;
+        setFilePanelWidthPx(
+          clampPx(
+            startW + dx,
+            FILE_PANEL_WIDTH_MIN_PX,
+            FILE_PANEL_WIDTH_MAX_PX,
+          ),
+        );
+      };
+      const onUp = (ev: PointerEvent) => {
+        if (ev.pointerId !== e.pointerId) return;
+        el.releasePointerCapture(e.pointerId);
+        el.removeEventListener("pointermove", onMove);
+        el.removeEventListener("pointerup", onUp);
+        el.removeEventListener("pointercancel", onUp);
+      };
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+      el.addEventListener("pointercancel", onUp);
+    },
+    [filePanelWidthPx],
+  );
+
+  const onTocPanelResizePointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const el = e.currentTarget;
+      el.setPointerCapture(e.pointerId);
+      const startX = e.clientX;
+      const startW = tocPanelWidthPx;
+      const onMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - startX;
+        setTocPanelWidthPx(
+          clampPx(
+            startW - dx,
+            TOC_PANEL_WIDTH_MIN_PX,
+            TOC_PANEL_WIDTH_MAX_PX,
+          ),
+        );
+      };
+      const onUp = (ev: PointerEvent) => {
+        if (ev.pointerId !== e.pointerId) return;
+        el.releasePointerCapture(e.pointerId);
+        el.removeEventListener("pointermove", onMove);
+        el.removeEventListener("pointerup", onUp);
+        el.removeEventListener("pointercancel", onUp);
+      };
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+      el.addEventListener("pointercancel", onUp);
+    },
+    [tocPanelWidthPx],
+  );
+
   useLayoutEffect(() => {
     if (showWelcome || !markdownHtml.trim()) {
       setTocEntries([]);
@@ -690,6 +772,7 @@ export function App() {
           <FileTreePanel
             id="file-tree-panel"
             panelExpanded={filePanelExpanded}
+            panelWidthPx={filePanelWidthPx}
             rootFolderPath={rootFolderPath}
             tree={treeNodes}
             treeLoading={treeLoading}
@@ -704,6 +787,18 @@ export function App() {
               void openMarkdownFromTree(path);
             }}
           />
+          {filePanelExpanded ? (
+            <div
+              className={appStyles.resizeHandle}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize file tree panel"
+              onPointerDown={onFilePanelResizePointerDown}
+              onDoubleClick={() =>
+                setFilePanelWidthPx(DEFAULT_FILE_PANEL_WIDTH_PX)
+              }
+            />
+          ) : null}
           <div className={appStyles.mainColumn}>
             <TabStrip
               tabs={tabStripTabs}
@@ -733,9 +828,22 @@ export function App() {
               </footer>
             )}
           </div>
+          {tocPanelExpanded ? (
+            <div
+              className={appStyles.resizeHandle}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize outline panel"
+              onPointerDown={onTocPanelResizePointerDown}
+              onDoubleClick={() =>
+                setTocPanelWidthPx(DEFAULT_TOC_PANEL_WIDTH_PX)
+              }
+            />
+          ) : null}
           <TocPanel
             id="toc-panel"
             panelExpanded={tocPanelExpanded}
+            panelWidthPx={tocPanelWidthPx}
             documentOpen={!showWelcome}
             entries={tocEntries}
             onActivateEntry={activateTocEntry}

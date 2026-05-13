@@ -13,6 +13,7 @@ const iconProps = {
 type FileTreePanelProps = {
   id?: string;
   panelExpanded: boolean;
+  panelWidthPx: number;
   rootFolderPath: string | null;
   tree: DirTreeNode[];
   treeLoading: boolean;
@@ -99,6 +100,7 @@ function TreeList(props: {
 export function FileTreePanel({
   id,
   panelExpanded,
+  panelWidthPx,
   rootFolderPath,
   tree,
   treeLoading,
@@ -138,6 +140,11 @@ export function FileTreePanel({
       id={id}
       className={`${styles.panel} ${styles.panelExpanded}`}
       aria-label="Files"
+      style={{
+        width: panelWidthPx,
+        minWidth: panelWidthPx,
+        flexShrink: 0,
+      }}
     >
       <div className={styles.inner}>
         <div className={styles.toolbar}>

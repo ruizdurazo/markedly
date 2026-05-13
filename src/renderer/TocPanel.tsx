@@ -8,6 +8,7 @@ export type TocEntry = {
 type TocPanelProps = {
   id?: string;
   panelExpanded: boolean;
+  panelWidthPx: number;
   /** When false (e.g. welcome), the outline list is not tied to a document. */
   documentOpen: boolean;
   entries: TocEntry[];
@@ -17,6 +18,7 @@ type TocPanelProps = {
 export function TocPanel({
   id,
   panelExpanded,
+  panelWidthPx,
   documentOpen,
   entries,
   onActivateEntry,
@@ -37,6 +39,11 @@ export function TocPanel({
       id={id}
       className={`${styles.panel} ${styles.panelExpanded}`}
       aria-label="Table of contents"
+      style={{
+        width: panelWidthPx,
+        minWidth: panelWidthPx,
+        flexShrink: 0,
+      }}
     >
       <div className={styles.inner}>
         <div className={styles.toolbar}>
