@@ -799,7 +799,9 @@ export function App() {
             }
           />
 
-          <div className={appStyles.mainColumn}>
+          <div
+            className={`${appStyles.mainColumn} ${filePanelExpanded ? appStyles.mainColumnLeftHandleOverlap : ""} ${tocPanelExpanded ? appStyles.mainColumnRightHandleOverlap : ""}`}
+          >
             <TabStrip
               tabs={tabStripTabs}
               activeTabId={activeTabId}

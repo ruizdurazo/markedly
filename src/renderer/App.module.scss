@@ -53,12 +53,24 @@
 }
 
 .mainColumn {
-  margin: 0 -4px;
+  margin-top: 0;
+  margin-bottom: 0;
+  margin-left: 0;
+  margin-right: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+}
+
+// Overlap the 4px resize handle only while that handle is visible (panel expanded).
+.mainColumnLeftHandleOverlap {
+  margin-left: -4px;
+}
+
+.mainColumnRightHandleOverlap {
+  margin-right: -4px;
 }
 
 .titlebar {
