@@ -33,7 +33,7 @@ export function TabStrip({
           role="tab"
           aria-selected={tab.id === activeTabId ? "true" : "false"}
         >
-          <div>{tab.label}</div>
+          <div className={styles.tabLabel}>{tab.label}</div>
           <button
             type="button"
             className={styles.tabClose}
