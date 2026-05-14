@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Folder, NavArrowDown, NavArrowRight, Page } from "iconoir-react";
 import type { DirTreeNode } from "../shared/types.js";
 import styles from "./FileTreePanel.module.scss";
@@ -13,6 +13,8 @@ const iconProps = {
 type FileTreePanelProps = {
   id?: string;
   panelExpanded: boolean;
+  /** When true, width follows the drag handle with no CSS transition. */
+  suppressWidthTransition?: boolean;
   panelWidthPx: number;
   rootFolderPath: string | null;
   tree: DirTreeNode[];
@@ -100,6 +102,7 @@ function TreeList(props: {
 export function FileTreePanel({
   id,
   panelExpanded,
+  suppressWidthTransition = false,
   panelWidthPx,
   rootFolderPath,
   tree,
@@ -124,29 +127,40 @@ export function FileTreePanel({
     });
   }, []);
 
-  if (!panelExpanded) {
-    return (
-      <aside
-        id={id}
-        className={`${styles.panel} ${styles.panelCollapsed}`}
-        aria-label="Files"
-        aria-hidden
-      />
-    );
-  }
+  const innerLayoutStyle = useMemo((): CSSProperties => {
+    if (suppressWidthTransition) {
+      return {
+        width: "100%",
+        minWidth: 0,
+        maxWidth: "none",
+        alignSelf: "stretch",
+      };
+    }
+    return {
+      width: panelWidthPx,
+      minWidth: panelWidthPx,
+      maxWidth: panelWidthPx,
+      flexShrink: 0,
+    };
+  }, [panelWidthPx, suppressWidthTransition]);
 
   return (
     <aside
       id={id}
-      className={`${styles.panel} ${styles.panelExpanded}`}
+      className={`${styles.panel} ${panelExpanded ? styles.panelExpanded : styles.panelCollapsed} ${suppressWidthTransition ? styles.panelSnapWidth : ""}`}
       aria-label="Files"
+      aria-hidden={!panelExpanded}
       style={{
-        width: panelWidthPx,
-        minWidth: panelWidthPx,
+        width: panelExpanded ? panelWidthPx : 0,
+        minWidth: panelExpanded ? panelWidthPx : 0,
         flexShrink: 0,
       }}
     >
-      <div className={styles.inner}>
+      <div
+        className={styles.inner}
+        style={innerLayoutStyle}
+        inert={!panelExpanded ? true : undefined}
+      >
         <div className={styles.toolbar}>
           <h2 className={styles.title}>Files</h2>
         </div>

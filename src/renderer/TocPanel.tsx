@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import type { CSSProperties } from "react";
 import styles from "./TocPanel.module.scss";
 
 export type TocEntry = {
@@ -8,6 +10,8 @@ export type TocEntry = {
 type TocPanelProps = {
   id?: string;
   panelExpanded: boolean;
+  /** When true, width follows the drag handle with no CSS transition. */
+  suppressWidthTransition?: boolean;
   panelWidthPx: number;
   /** When false (e.g. welcome), the outline list is not tied to a document. */
   documentOpen: boolean;
@@ -18,34 +22,46 @@ type TocPanelProps = {
 export function TocPanel({
   id,
   panelExpanded,
+  suppressWidthTransition = false,
   panelWidthPx,
   documentOpen,
   entries,
   onActivateEntry,
 }: TocPanelProps) {
-  if (!panelExpanded) {
-    return (
-      <aside
-        id={id}
-        className={`${styles.panel} ${styles.panelCollapsed}`}
-        aria-label="Table of contents"
-        aria-hidden
-      />
-    );
-  }
+  const innerLayoutStyle = useMemo((): CSSProperties => {
+    if (suppressWidthTransition) {
+      return {
+        width: "100%",
+        minWidth: 0,
+        maxWidth: "none",
+        alignSelf: "stretch",
+      };
+    }
+    return {
+      width: panelWidthPx,
+      minWidth: panelWidthPx,
+      maxWidth: panelWidthPx,
+      flexShrink: 0,
+    };
+  }, [panelWidthPx, suppressWidthTransition]);
 
   return (
     <aside
       id={id}
-      className={`${styles.panel} ${styles.panelExpanded}`}
+      className={`${styles.panel} ${panelExpanded ? styles.panelExpanded : styles.panelCollapsed} ${suppressWidthTransition ? styles.panelSnapWidth : ""}`}
       aria-label="Table of contents"
+      aria-hidden={!panelExpanded}
       style={{
-        width: panelWidthPx,
-        minWidth: panelWidthPx,
+        width: panelExpanded ? panelWidthPx : 0,
+        minWidth: panelExpanded ? panelWidthPx : 0,
         flexShrink: 0,
       }}
     >
-      <div className={styles.inner}>
+      <div
+        className={styles.inner}
+        style={innerLayoutStyle}
+        inert={!panelExpanded ? true : undefined}
+      >
         <div className={styles.toolbar}>
           <h2 className={styles.title}>Outline</h2>
         </div>

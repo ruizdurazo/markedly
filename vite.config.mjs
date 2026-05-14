@@ -1,6 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
+import svgr from "vite-plugin-svgr";
 import { defineConfig } from "vite";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -33,7 +34,7 @@ function devCspPlugin() {
 export default defineConfig({
   root: resolve(__dirname, "src/renderer"),
   base: "./",
-  plugins: [react(), devCspPlugin()],
+  plugins: [react(), svgr(), devCspPlugin()],
   build: {
     outDir: resolve(__dirname, "dist/renderer"),
     emptyOutDir: true,

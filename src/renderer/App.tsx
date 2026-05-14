@@ -19,7 +19,8 @@ import {
 } from "./lib/markdown-html";
 import { MarkdownBody, type MarkdownBodyHandle } from "./MarkdownBody";
 import statusStyles from "./StatusBar.module.scss";
-import { SidebarCollapse, SidebarExpand } from "iconoir-react";
+import SidebarLeftIcon from "../assets/icons/sidebar-left.svg?react";
+import SidebarRightIcon from "../assets/icons/sidebar-right.svg?react";
 import { TabStrip } from "./TabStrip";
 import appStyles from "./App.module.scss";
 import { Welcome } from "./Welcome";
@@ -43,12 +44,6 @@ function tabLabel(tab: Tab): string {
   const parts = tab.path.split(/[/\\]/);
   return parts[parts.length - 1] || "Untitled";
 }
-
-const titlebarIconProps = {
-  width: 16,
-  height: 16,
-  strokeWidth: 2,
-} as const;
 
 const DEFAULT_FILE_PANEL_WIDTH_PX = 200;
 const DEFAULT_TOC_PANEL_WIDTH_PX = 220;
@@ -99,6 +94,10 @@ export function App() {
   const [tocPanelWidthPx, setTocPanelWidthPx] = useState(
     DEFAULT_TOC_PANEL_WIDTH_PX,
   );
+  const [filePanelResizeDragActive, setFilePanelResizeDragActive] =
+    useState(false);
+  const [tocPanelResizeDragActive, setTocPanelResizeDragActive] =
+    useState(false);
   const [tocEntries, setTocEntries] = useState<TocEntry[]>([]);
   const [rootFolderPath, setRootFolderPath] = useState<string | null>(null);
   const [treeNodes, setTreeNodes] = useState<DirTreeNode[]>([]);
@@ -635,6 +634,9 @@ export function App() {
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       e.preventDefault();
+      flushSync(() => {
+        setFilePanelResizeDragActive(true);
+      });
       const el = e.currentTarget;
       el.setPointerCapture(e.pointerId);
       const startX = e.clientX;
@@ -655,6 +657,7 @@ export function App() {
         el.removeEventListener("pointermove", onMove);
         el.removeEventListener("pointerup", onUp);
         el.removeEventListener("pointercancel", onUp);
+        setFilePanelResizeDragActive(false);
       };
       el.addEventListener("pointermove", onMove);
       el.addEventListener("pointerup", onUp);
@@ -667,6 +670,9 @@ export function App() {
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       e.preventDefault();
+      flushSync(() => {
+        setTocPanelResizeDragActive(true);
+      });
       const el = e.currentTarget;
       el.setPointerCapture(e.pointerId);
       const startX = e.clientX;
@@ -683,6 +689,7 @@ export function App() {
         el.removeEventListener("pointermove", onMove);
         el.removeEventListener("pointerup", onUp);
         el.removeEventListener("pointercancel", onUp);
+        setTocPanelResizeDragActive(false);
       };
       el.addEventListener("pointermove", onMove);
       el.addEventListener("pointerup", onUp);
@@ -736,11 +743,7 @@ export function App() {
               aria-expanded={filePanelExpanded}
               aria-controls="file-tree-panel"
             >
-              {filePanelExpanded ? (
-                <SidebarCollapse {...titlebarIconProps} />
-              ) : (
-                <SidebarExpand {...titlebarIconProps} />
-              )}
+              <SidebarLeftIcon width={16} height={16} aria-hidden />
             </button>
           </div>
           <div className={appStyles.titlebarFlexSpacer} aria-hidden />
@@ -753,11 +756,7 @@ export function App() {
               aria-expanded={tocPanelExpanded}
               aria-controls="toc-panel"
             >
-              {tocPanelExpanded ? (
-                <SidebarCollapse {...titlebarIconProps} />
-              ) : (
-                <SidebarExpand {...titlebarIconProps} />
-              )}
+              <SidebarRightIcon width={16} height={16} aria-hidden />
             </button>
           </div>
         </div>
@@ -765,9 +764,11 @@ export function App() {
 
       <div className={appStyles.app}>
         <div className={appStyles.bodyRow}>
+          {/* Files side panel */}
           <FileTreePanel
             id="file-tree-panel"
             panelExpanded={filePanelExpanded}
+            suppressWidthTransition={filePanelResizeDragActive}
             panelWidthPx={filePanelWidthPx}
             rootFolderPath={rootFolderPath}
             tree={treeNodes}
@@ -784,18 +785,19 @@ export function App() {
             }}
           />
 
-          {filePanelExpanded ? (
-            <div
-              className={appStyles.resizeHandle}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize file tree panel"
-              onPointerDown={onFilePanelResizePointerDown}
-              onDoubleClick={() =>
-                setFilePanelWidthPx(DEFAULT_FILE_PANEL_WIDTH_PX)
-              }
-            />
-          ) : null}
+          <div
+            className={`${appStyles.resizeHandle} ${filePanelExpanded ? "" : appStyles.resizeHandleCollapsed}`}
+            role="separator"
+            aria-orientation="vertical"
+            aria-hidden={!filePanelExpanded}
+            aria-label={
+              filePanelExpanded ? "Resize file tree panel" : undefined
+            }
+            onPointerDown={onFilePanelResizePointerDown}
+            onDoubleClick={() =>
+              setFilePanelWidthPx(DEFAULT_FILE_PANEL_WIDTH_PX)
+            }
+          />
 
           <div className={appStyles.mainColumn}>
             <TabStrip
@@ -827,22 +829,23 @@ export function App() {
             )}
           </div>
 
-          {tocPanelExpanded ? (
-            <div
-              className={appStyles.resizeHandle}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize outline panel"
-              onPointerDown={onTocPanelResizePointerDown}
-              onDoubleClick={() =>
-                setTocPanelWidthPx(DEFAULT_TOC_PANEL_WIDTH_PX)
-              }
-            />
-          ) : null}
+          <div
+            className={`${appStyles.resizeHandle} ${tocPanelExpanded ? "" : appStyles.resizeHandleCollapsed}`}
+            role="separator"
+            aria-orientation="vertical"
+            aria-hidden={!tocPanelExpanded}
+            aria-label={tocPanelExpanded ? "Resize outline panel" : undefined}
+            onPointerDown={onTocPanelResizePointerDown}
+            onDoubleClick={() =>
+              setTocPanelWidthPx(DEFAULT_TOC_PANEL_WIDTH_PX)
+            }
+          />
 
+          {/* TOC side panel */}
           <TocPanel
             id="toc-panel"
             panelExpanded={tocPanelExpanded}
+            suppressWidthTransition={tocPanelResizeDragActive}
             panelWidthPx={tocPanelWidthPx}
             documentOpen={!showWelcome}
             entries={tocEntries}

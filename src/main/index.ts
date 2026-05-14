@@ -11,7 +11,11 @@ import { watch } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { DirTreeNode, ListMarkdownTreeResult, ResolvedMdLink } from "../shared/types.js";
+import type {
+  DirTreeNode,
+  ListMarkdownTreeResult,
+  ResolvedMdLink,
+} from "../shared/types.js";
 
 if (!app.isPackaged) {
   app.commandLine.appendSwitch("disable-http-cache");
@@ -34,7 +38,12 @@ function extractMdFromArgv(argv: string[]): string | null {
   for (const a of args) {
     if (a.startsWith("-")) continue;
     const lower = a.toLowerCase();
-    if (lower.endsWith(".md") || lower.endsWith(".markdown") || lower.endsWith(".mdown") || lower.endsWith(".mkd")) {
+    if (
+      lower.endsWith(".md") ||
+      lower.endsWith(".markdown") ||
+      lower.endsWith(".mdown") ||
+      lower.endsWith(".mkd")
+    ) {
       return resolve(a);
     }
   }
@@ -109,14 +118,21 @@ async function listMarkdownDirTree(
   return nodes;
 }
 
-async function resolveMarkdownHref(baseFilePath: string, href: string): Promise<ResolvedMdLink | null> {
+async function resolveMarkdownHref(
+  baseFilePath: string,
+  href: string,
+): Promise<ResolvedMdLink | null> {
   const baseResolved = resolve(baseFilePath);
   const hRaw = href.trim();
   if (!hRaw || hRaw.toLowerCase().startsWith("javascript:")) return null;
 
   if (/^[a-z][a-z0-9+.-]*:/i.test(hRaw)) {
     const lower = hRaw.toLowerCase();
-    if (lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("mailto:")) {
+    if (
+      lower.startsWith("http://") ||
+      lower.startsWith("https://") ||
+      lower.startsWith("mailto:")
+    ) {
       return { kind: "external", url: hRaw };
     }
     if (lower.startsWith("file:")) {
@@ -193,7 +209,11 @@ function ensureWatching(filePath: string) {
 }
 
 function getDialogParentWindow(): BrowserWindow | null {
-  return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().at(-1) ?? null;
+  return (
+    BrowserWindow.getFocusedWindow() ??
+    BrowserWindow.getAllWindows().at(-1) ??
+    null
+  );
 }
 
 /** Option (a): route opens to the focused window; fallback to last created window. */
@@ -202,6 +222,48 @@ function getTargetWindowForOpen(): BrowserWindow | null {
   if (focused && !focused.isDestroyed()) return focused;
   const all = BrowserWindow.getAllWindows();
   return all.length ? all[all.length - 1]! : null;
+}
+
+/** Resolve menu / focus targets to `BrowserWindow` (Electron 34 types use `BaseWindow` for menu callbacks). */
+function asBrowserWindow(
+  win: Electron.BaseWindow | null | undefined,
+): BrowserWindow | null {
+  if (win == null || win.isDestroyed()) return null;
+  return BrowserWindow.fromId(win.id);
+}
+
+/** Matches `trafficLightPosition` / renderer mac title bar inset; scales with Chromium page zoom. */
+const DARWIN_WINDOW_BUTTON_BASE = { x: 14, y: 14 } as const;
+
+function syncDarwinWindowButtonPositionToPageZoom(win: Electron.BaseWindow) {
+  if (process.platform !== "darwin" || win.isDestroyed()) return;
+  const bw = asBrowserWindow(win);
+  if (!bw) return;
+  const factor = bw.webContents.getZoomFactor();
+  bw.setWindowButtonPosition({
+    x: Math.round(DARWIN_WINDOW_BUTTON_BASE.x * factor ** 1.5),
+    y: Math.round(DARWIN_WINDOW_BUTTON_BASE.y * factor ** 1.5),
+  });
+}
+
+function adjustWindowZoomLevel(
+  win: Electron.BaseWindow | null | undefined,
+  delta: number,
+) {
+  const target =
+    asBrowserWindow(win) ?? asBrowserWindow(BrowserWindow.getFocusedWindow());
+  if (!target) return;
+  const wc = target.webContents;
+  wc.setZoomLevel(wc.getZoomLevel() + delta);
+  syncDarwinWindowButtonPositionToPageZoom(target);
+}
+
+function resetWindowZoomLevel(win: Electron.BaseWindow | null | undefined) {
+  const target =
+    asBrowserWindow(win) ?? asBrowserWindow(BrowserWindow.getFocusedWindow());
+  if (!target) return;
+  target.webContents.setZoomLevel(0);
+  syncDarwinWindowButtonPositionToPageZoom(target);
 }
 
 function sendOpenPathToTarget(path: string) {
@@ -235,7 +297,7 @@ function createWindow(): BrowserWindow {
 
   if (process.platform === "darwin") {
     options.titleBarStyle = "hiddenInset";
-    options.trafficLightPosition = { x: 14, y: 14 };
+    options.trafficLightPosition = { ...DARWIN_WINDOW_BUTTON_BASE };
   }
 
   const win = new BrowserWindow(options);
@@ -256,12 +318,23 @@ function createWindow(): BrowserWindow {
   } else {
     void win.loadFile(join(__dirname, "../renderer/index.html"));
   }
-  win.once("ready-to-show", () => win.show());
+  win.once("ready-to-show", () => {
+    win.show();
+    if (process.platform === "darwin") {
+      syncDarwinWindowButtonPositionToPageZoom(win);
+    }
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: "deny" };
   });
+
+  if (process.platform === "darwin") {
+    const syncButtons = () => syncDarwinWindowButtonPositionToPageZoom(win);
+    win.webContents.on("did-finish-load", syncButtons);
+    win.webContents.on("zoom-changed", syncButtons);
+  }
 
   win.webContents.on("will-navigate", (event, url) => {
     const wc = win.webContents;
@@ -377,7 +450,12 @@ function buildMenu() {
             if (!win) return;
             const { canceled, filePaths } = await dialog.showOpenDialog(win, {
               properties: ["openFile"],
-              filters: [{ name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd"] }],
+              filters: [
+                {
+                  name: "Markdown",
+                  extensions: ["md", "markdown", "mdown", "mkd"],
+                },
+              ],
             });
             if (!canceled && filePaths[0] && !win.isDestroyed()) {
               win.webContents.send("md:open-path", filePaths[0]);
@@ -415,9 +493,24 @@ function buildMenu() {
         { role: "reload" },
         { role: "forceReload" },
         { type: "separator" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
+        {
+          label: "Actual Size",
+          accelerator: "CmdOrCtrl+0",
+          click: (_item, browserWindow) => resetWindowZoomLevel(browserWindow),
+        },
+        {
+          label: "Zoom In",
+          accelerator: "CmdOrCtrl+=",
+          acceleratorWorksWhenHidden: true,
+          click: (_item, browserWindow) =>
+            adjustWindowZoomLevel(browserWindow, 1),
+        },
+        {
+          label: "Zoom Out",
+          accelerator: "CmdOrCtrl+-",
+          click: (_item, browserWindow) =>
+            adjustWindowZoomLevel(browserWindow, -1),
+        },
         { type: "separator" },
         { role: "togglefullscreen" },
       ],
@@ -493,18 +586,22 @@ if (!gotLock) {
     });
 
     ipcMain.handle("md:open-dialog", async (event) => {
-      const win = BrowserWindow.fromWebContents(event.sender) ?? getDialogParentWindow();
+      const win =
+        BrowserWindow.fromWebContents(event.sender) ?? getDialogParentWindow();
       if (!win) return null;
       const { canceled, filePaths } = await dialog.showOpenDialog(win, {
         properties: ["openFile"],
-        filters: [{ name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd"] }],
+        filters: [
+          { name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd"] },
+        ],
       });
       if (canceled || !filePaths[0]) return null;
       return filePaths[0];
     });
 
     ipcMain.handle("md:open-folder-dialog", async (event) => {
-      const win = BrowserWindow.fromWebContents(event.sender) ?? getDialogParentWindow();
+      const win =
+        BrowserWindow.fromWebContents(event.sender) ?? getDialogParentWindow();
       if (!win) return null;
       const { canceled, filePaths } = await dialog.showOpenDialog(win, {
         properties: ["openDirectory", "createDirectory"],
@@ -513,18 +610,22 @@ if (!gotLock) {
       return validateDirPath(filePaths[0]);
     });
 
-    ipcMain.handle("md:list-markdown-tree", async (_e, rawRoot: unknown): Promise<ListMarkdownTreeResult> => {
-      if (typeof rawRoot !== "string") return { ok: false, error: "Invalid path" };
-      const root = await validateDirPath(rawRoot);
-      if (!root) return { ok: false, error: "Not a folder" };
-      try {
-        const tree = await listMarkdownDirTree(root, root, 0);
-        return { ok: true, root, tree };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Read failed";
-        return { ok: false, error: message };
-      }
-    });
+    ipcMain.handle(
+      "md:list-markdown-tree",
+      async (_e, rawRoot: unknown): Promise<ListMarkdownTreeResult> => {
+        if (typeof rawRoot !== "string")
+          return { ok: false, error: "Invalid path" };
+        const root = await validateDirPath(rawRoot);
+        if (!root) return { ok: false, error: "Not a folder" };
+        try {
+          const tree = await listMarkdownDirTree(root, root, 0);
+          return { ok: true, root, tree };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Read failed";
+          return { ok: false, error: message };
+        }
+      },
+    );
 
     ipcMain.handle("md:normalize-path", async (_e, rawPath: unknown) => {
       if (typeof rawPath !== "string") return null;
@@ -532,7 +633,8 @@ if (!gotLock) {
     });
 
     ipcMain.handle("md:read", async (_e, rawPath: unknown) => {
-      if (typeof rawPath !== "string") return { ok: false as const, error: "Invalid path" };
+      if (typeof rawPath !== "string")
+        return { ok: false as const, error: "Invalid path" };
       const p = await validateMdPath(rawPath);
       if (!p) return { ok: false as const, error: "File not found" };
       try {
@@ -555,10 +657,18 @@ if (!gotLock) {
       }
     });
 
-    ipcMain.handle("md:resolve-link", async (_e, basePath: unknown, href: unknown): Promise<ResolvedMdLink | null> => {
-      if (typeof basePath !== "string" || typeof href !== "string") return null;
-      return resolveMarkdownHref(basePath, href);
-    });
+    ipcMain.handle(
+      "md:resolve-link",
+      async (
+        _e,
+        basePath: unknown,
+        href: unknown,
+      ): Promise<ResolvedMdLink | null> => {
+        if (typeof basePath !== "string" || typeof href !== "string")
+          return null;
+        return resolveMarkdownHref(basePath, href);
+      },
+    );
 
     ipcMain.handle("md:open-external", async (_e, url: unknown) => {
       if (typeof url !== "string") return;
