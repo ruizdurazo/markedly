@@ -1,10 +1,8 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { markedRenderingExtensions } from "../renderer/marked-extensions";
-import {
-  formatMetadataCell,
-  splitFrontmatter,
-} from "../renderer/frontmatter";
+import { formatMetadataCell, splitFrontmatter } from "../renderer/frontmatter";
+import { wrapBareMermaidMarkdown } from "../renderer/lib/wrap-bare-mermaid.js";
 
 type QuickLookBridge = {
   getPreviewedFile(): Promise<{ file: File; path: string }>;
@@ -65,9 +63,17 @@ function buildMetadataTableHtml(metadata: Record<string, unknown>): string {
 }
 
 function parseMarkdown(markdown: string): string {
-  const raw = marked.parse(markdown, { async: false }) as string;
+  const raw = marked.parse(wrapBareMermaidMarkdown(markdown), {
+    async: false,
+  }) as string;
   return purify.sanitize(raw, {
-    ADD_ATTR: ["id", "class", "style"],
+    ADD_ATTR: [
+      "id",
+      "class",
+      "style",
+      "data-mermaid-source",
+      "data-markedly-expand-layout",
+    ],
     ADD_TAGS: ["svg", "path", "g", "marker", "defs", "use"],
   });
 }
@@ -118,17 +124,48 @@ function normalizeRootRelativeMediaUrls(root: HTMLElement): void {
 }
 
 async function renderMermaid(scope: ParentNode): Promise<void> {
-  const nodes = scope.querySelectorAll(".mermaid");
+  const nodes = Array.from(scope.querySelectorAll<HTMLElement>(".mermaid"));
   if (nodes.length === 0) return;
   const mermaid = (await import("mermaid")).default;
   const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   mermaid.initialize({
     startOnLoad: false,
     theme: dark ? "dark" : "default",
-    securityLevel: "strict",
+    securityLevel: "loose",
     fontFamily: "inherit",
   });
-  await mermaid.run({ nodes: Array.from(nodes) as HTMLElement[] });
+
+  const errors: unknown[] = [];
+  for (const node of nodes) {
+    const sourceAttr = node.getAttribute("data-mermaid-source");
+    let source = node.textContent ?? "";
+    if (sourceAttr) {
+      try {
+        source = decodeURIComponent(sourceAttr);
+      } catch {
+        source = node.textContent ?? "";
+      }
+    }
+    if (!source.trim()) continue;
+
+    try {
+      const id = `markedly-mermaid-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+      const { svg, bindFunctions } = await mermaid.render(id, source);
+      node.innerHTML = svg;
+      bindFunctions?.(node);
+      node.classList.remove("mermaid--error");
+    } catch (error) {
+      errors.push(error);
+      node.classList.add("mermaid--error");
+      node.textContent = source;
+    }
+  }
+
+  if (errors.length > 0) {
+    throw errors[0];
+  }
 }
 
 function showError(title: string, detail: string): void {
@@ -141,7 +178,10 @@ function withTimeout<T>(
   message: string,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    const timer = window.setTimeout(
+      () => reject(new Error(message)),
+      timeoutMs,
+    );
     promise.then(
       (value) => {
         window.clearTimeout(timer);
@@ -186,9 +226,10 @@ async function main(): Promise<void> {
 
     document.title = fileNameFromPath(path);
     setBaseHref(path);
-    preview.innerHTML = purify.sanitize(metadataHtml, {
-      ADD_ATTR: ["class", "scope", "aria-label"],
-    }) + parseMarkdown(body);
+    preview.innerHTML =
+      purify.sanitize(metadataHtml, {
+        ADD_ATTR: ["class", "scope", "aria-label"],
+      }) + parseMarkdown(body);
     normalizeRootRelativeMediaUrls(preview);
     await finishQuickLook(bridge);
 

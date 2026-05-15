@@ -16,23 +16,38 @@ import {
   parseMarkdown,
   scrollElementIntoScrollParent,
   scrollMarkdownToFragment,
+  syncHighlighterColorScheme,
 } from "./lib/markdown-html";
 import { MarkdownBody, type MarkdownBodyHandle } from "./MarkdownBody";
 import statusStyles from "./StatusBar.module.scss";
 import SidebarLeftIcon from "../assets/icons/sidebar-left.svg?react";
 import SidebarRightIcon from "../assets/icons/sidebar-right.svg?react";
+import { HalfMoon, ModernTv, SunLight } from "iconoir-react";
 import { TabStrip } from "./TabStrip";
 import appStyles from "./App.module.scss";
 import { Welcome } from "./Welcome";
-import type { DirTreeNode } from "../shared/types.js";
+import type { ColorSchemePreference, DirTreeNode } from "../shared/types.js";
 import { FileTreePanel } from "./FileTreePanel";
 import { TocPanel, type TocEntry } from "./TocPanel";
+import {
+  applyColorSchemeToDocument,
+  getResolvedColorScheme,
+  readStoredColorSchemePreference,
+  writeStoredColorSchemePreference,
+} from "./color-scheme";
 
 type Tab = {
   id: string;
   path: string | null;
   stale: boolean;
   scrollTop: number;
+};
+
+/** Per-tab rendered HTML + `<base href>` dir so switching tabs does not re-fetch or re-parse. */
+type TabContentCache = {
+  html: string;
+  dirUrl: string;
+  path: string;
 };
 
 function newTabId(): string {
@@ -103,15 +118,37 @@ export function App() {
   const [treeNodes, setTreeNodes] = useState<DirTreeNode[]>([]);
   const [treeLoading, setTreeLoading] = useState(false);
   const [treeError, setTreeError] = useState<string | null>(null);
+  const [colorSchemePref, setColorSchemePref] = useState<ColorSchemePreference>(
+    () => readStoredColorSchemePreference(),
+  );
+  const [systemSchemeTick, setSystemSchemeTick] = useState(0);
+  const colorSchemePrefRef = useRef(colorSchemePref);
+  colorSchemePrefRef.current = colorSchemePref;
+
+  const resolvedColorScheme = useMemo(
+    () => getResolvedColorScheme(colorSchemePref),
+    [colorSchemePref, systemSchemeTick],
+  );
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const markdownBodyRef = useRef<MarkdownBodyHandle>(null);
+  const markdownBodyHandlesRef = useRef(
+    new Map<string, MarkdownBodyHandle>(),
+  );
+  const showWelcomeRef = useRef(showWelcome);
+  showWelcomeRef.current = showWelcome;
   const ignoreScrollRef = useRef(false);
   const baseElRef = useRef<HTMLBaseElement | null>(null);
   const tabsRef = useRef(tabs);
   const activeTabIdRef = useRef(activeTabId);
+  const tabContentCacheRef = useRef(new Map<string, TabContentCache>());
   tabsRef.current = tabs;
   activeTabIdRef.current = activeTabId;
+
+  const getActiveMarkdownRoot = useCallback((): HTMLElement | null => {
+    if (showWelcomeRef.current) return null;
+    const id = activeTabIdRef.current;
+    return markdownBodyHandlesRef.current.get(id)?.getRoot() ?? null;
+  }, []);
 
   const activePathRef = useRef<string | null>(null);
   activePathRef.current = tabs.find((t) => t.id === activeTabId)?.path ?? null;
@@ -139,44 +176,67 @@ export function App() {
     if (p) setStatusText(`${p} (diagram error)`);
   }, []);
 
+  const cycleColorScheme = useCallback(() => {
+    setColorSchemePref((p) => {
+      const next: ColorSchemePreference =
+        p === "system" ? "light" : p === "light" ? "dark" : "system";
+      writeStoredColorSchemePreference(next);
+      return next;
+    });
+  }, []);
+
   const loadPath = useCallback(
     async (filePath: string, options?: { fragment?: string }) => {
-      const tab = getActiveTab();
+      const loadingTabId = activeTabIdRef.current;
+      const tab = tabsRef.current.find((x) => x.id === loadingTabId);
       if (!tab) return;
 
-      setStatusText("Loading…");
+      if (activeTabIdRef.current === loadingTabId) {
+        setStatusText("Loading…");
+      }
       const result = await window.markedly.readFile(filePath);
       if (!result.ok) {
-        setStatusText(result.error);
+        tabContentCacheRef.current.delete(loadingTabId);
         setTabs((prev) =>
           prev.map((t) =>
-            t.id === activeTabIdRef.current
-              ? { ...t, path: null, stale: false }
-              : t,
+            t.id === loadingTabId ? { ...t, path: null, stale: false } : t,
           ),
         );
-        setShowWelcome(true);
-        setMarkdownHtml("");
-        clearBaseHref();
-        ignoreScrollRef.current = false;
+        if (activeTabIdRef.current === loadingTabId) {
+          setStatusText(result.error);
+          setShowWelcome(true);
+          setMarkdownHtml("");
+          clearBaseHref();
+          ignoreScrollRef.current = false;
+        }
         return;
       }
 
-      ignoreScrollRef.current = true;
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.id === activeTabIdRef.current
-            ? { ...t, path: result.path, stale: false }
-            : t,
-        ),
-      );
-      setBaseHref(result.dirUrl);
       const { body, metadata } = splitFrontmatter(result.content);
       const metaHtml =
         metadata && Object.keys(metadata).length > 0
           ? buildMetadataTableHtml(metadata, formatMetadataCell)
           : "";
       const html = metaHtml + parseMarkdown(body);
+      tabContentCacheRef.current.set(loadingTabId, {
+        html,
+        dirUrl: result.dirUrl,
+        path: result.path,
+      });
+
+      ignoreScrollRef.current = true;
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === loadingTabId ? { ...t, path: result.path, stale: false } : t,
+        ),
+      );
+
+      if (activeTabIdRef.current !== loadingTabId) {
+        ignoreScrollRef.current = false;
+        return;
+      }
+
+      setBaseHref(result.dirUrl);
       setMarkdownHtml(html);
       setShowWelcome(false);
       setStatusText(result.path);
@@ -184,7 +244,7 @@ export function App() {
       const frag = options?.fragment;
       const scrollTopForTab = tab.scrollTop;
       requestAnimationFrame(() => {
-        const root = markdownBodyRef.current?.getRoot();
+        const root = getActiveMarkdownRoot();
         if (frag && root) {
           scrollMarkdownToFragment(frag, root);
         } else if (scrollContainerRef.current) {
@@ -195,7 +255,7 @@ export function App() {
         });
       });
     },
-    [clearBaseHref, getActiveTab, setBaseHref],
+    [clearBaseHref, getActiveMarkdownRoot, setBaseHref],
   );
 
   const applyActiveTabToView = useCallback(async () => {
@@ -217,8 +277,26 @@ export function App() {
       });
       return;
     }
+    const cached = tabContentCacheRef.current.get(t.id);
+    if (cached && cached.path === t.path && !t.stale) {
+      ignoreScrollRef.current = true;
+      setBaseHref(cached.dirUrl);
+      setMarkdownHtml(cached.html);
+      setShowWelcome(false);
+      setStatusText(cached.path);
+      const scrollTopForTab = t.scrollTop;
+      requestAnimationFrame(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollTopForTab;
+        }
+        requestAnimationFrame(() => {
+          ignoreScrollRef.current = false;
+        });
+      });
+      return;
+    }
     await loadPath(t.path);
-  }, [clearBaseHref, getActiveTab, loadPath]);
+  }, [clearBaseHref, getActiveTab, loadPath, setBaseHref]);
 
   const openFilePathSmart = useCallback(
     async (filePath: string, options?: { fragment?: string }) => {
@@ -251,7 +329,7 @@ export function App() {
         if (existing.id === activeTabIdRef.current) {
           if (fragment) {
             requestAnimationFrame(() => {
-              const root = markdownBodyRef.current?.getRoot();
+              const root = getActiveMarkdownRoot();
               if (root) scrollMarkdownToFragment(fragment, root);
             });
           }
@@ -269,7 +347,7 @@ export function App() {
         await applyActiveTabToView();
         if (fragment) {
           requestAnimationFrame(() => {
-            const root = markdownBodyRef.current?.getRoot();
+            const root = getActiveMarkdownRoot();
             if (root) scrollMarkdownToFragment(fragment, root);
           });
         }
@@ -295,7 +373,7 @@ export function App() {
         await loadPath(normalized, options);
       }
     },
-    [applyActiveTabToView, getActiveTab, loadPath],
+    [applyActiveTabToView, getActiveMarkdownRoot, getActiveTab, loadPath],
   );
 
   const openPathInNewTab = useCallback(
@@ -344,11 +422,10 @@ export function App() {
   }, [rootFolderPath, refreshFileTree]);
 
   const openMarkdownFromTree = useCallback(
-    async (filePath: string) => {
-      const normalized = await window.markedly.normalizeMarkdownPath(filePath);
-      await openPathInNewTab(normalized ?? filePath);
+    (filePath: string) => {
+      void openFilePathSmart(filePath);
     },
-    [openPathInNewTab],
+    [openFilePathSmart],
   );
 
   const addTab = useCallback(() => {
@@ -393,6 +470,7 @@ export function App() {
       }
       const idx = prev.findIndex((t) => t.id === tabId);
       if (idx < 0) return;
+      tabContentCacheRef.current.delete(tabId);
       const closingActive = activeTabIdRef.current === tabId;
       const newTabs = prev.filter((t) => t.id !== tabId);
       if (!closingActive) {
@@ -400,30 +478,13 @@ export function App() {
         return;
       }
       const nextId = newTabs[Math.max(0, idx - 1)]!.id;
-      const nextTab = newTabs.find((t) => t.id === nextId)!;
       flushSync(() => {
         setTabs(newTabs);
         setActiveTabId(nextId);
       });
-      if (!nextTab.path) {
-        ignoreScrollRef.current = true;
-        setStatusText("");
-        setShowWelcome(true);
-        setMarkdownHtml("");
-        clearBaseHref();
-        requestAnimationFrame(() => {
-          if (scrollContainerRef.current) {
-            scrollContainerRef.current.scrollTop = nextTab.scrollTop;
-          }
-          requestAnimationFrame(() => {
-            ignoreScrollRef.current = false;
-          });
-        });
-      } else {
-        void loadPath(nextTab.path);
-      }
+      void applyActiveTabToView();
     },
-    [clearBaseHref, loadPath],
+    [applyActiveTabToView],
   );
 
   const closeActiveTabOrWindow = useCallback(() => {
@@ -434,7 +495,7 @@ export function App() {
     async (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const a = target.closest("a");
-      const root = markdownBodyRef.current?.getRoot();
+      const root = getActiveMarkdownRoot();
       if (!a || !root?.contains(a)) return;
       const hrefAttr = a.getAttribute("href");
       if (hrefAttr == null || hrefAttr === "") return;
@@ -483,12 +544,26 @@ export function App() {
         return;
       }
     },
-    [openFilePathSmart],
+    [getActiveMarkdownRoot, openFilePathSmart],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     injectHighlighterTheme();
-  }, []);
+    applyColorSchemeToDocument(colorSchemePref);
+    syncHighlighterColorScheme(colorSchemePref);
+  }, [colorSchemePref]);
+
+  useEffect(() => {
+    void window.markedly.setNativeColorScheme(colorSchemePref);
+  }, [colorSchemePref]);
+
+  useEffect(() => {
+    if (colorSchemePref !== "system") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => setSystemSchemeTick((n) => n + 1);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [colorSchemePref]);
 
   useEffect(() => {
     if (navigator.userAgent.toLowerCase().includes("mac")) {
@@ -506,14 +581,20 @@ export function App() {
   }, [tabs, activeTabId]);
 
   useEffect(() => {
-    const root = markdownBodyRef.current?.getRoot();
+    const root = getActiveMarkdownRoot();
     if (!root || showWelcome) return;
     const handler = (e: MouseEvent) => {
       void handleMarkdownLinkClick(e);
     };
     root.addEventListener("click", handler, true);
     return () => root.removeEventListener("click", handler, true);
-  }, [showWelcome, markdownHtml, handleMarkdownLinkClick]);
+  }, [
+    activeTabId,
+    getActiveMarkdownRoot,
+    handleMarkdownLinkClick,
+    markdownHtml,
+    showWelcome,
+  ]);
 
   useEffect(() => {
     const unsubs = [
@@ -523,13 +604,18 @@ export function App() {
         for (const t of tabsRef.current) {
           if (t.path !== p) continue;
           if (t.id === activeTabIdRef.current) void loadPath(p);
-          else
+          else {
+            tabContentCacheRef.current.delete(t.id);
             setTabs((prev) =>
               prev.map((x) => (x.id === t.id ? { ...x, stale: true } : x)),
             );
+          }
         }
       }),
       window.markedly.onThemeChanged(() => {
+        if (colorSchemePrefRef.current === "system") {
+          setSystemSchemeTick((n) => n + 1);
+        }
         const path = activePathRef.current;
         if (path) void loadPath(path);
       }),
@@ -703,7 +789,7 @@ export function App() {
       setTocEntries([]);
       return;
     }
-    const root = markdownBodyRef.current?.getRoot();
+    const root = getActiveMarkdownRoot();
     if (!root) {
       setTocEntries([]);
       return;
@@ -715,10 +801,10 @@ export function App() {
         text: node.textContent?.trim() ?? "",
       })),
     );
-  }, [markdownHtml, showWelcome]);
+  }, [activeTabId, getActiveMarkdownRoot, markdownHtml, showWelcome]);
 
   const activateTocEntry = useCallback((index: number) => {
-    const root = markdownBodyRef.current?.getRoot();
+    const root = getActiveMarkdownRoot();
     const scrollParent = scrollContainerRef.current;
     if (!root || !scrollParent) return;
     const headings = getMarkdownHeadingElements(root);
@@ -728,7 +814,7 @@ export function App() {
       behavior: "smooth",
       marginTop: 8,
     });
-  }, []);
+  }, [getActiveMarkdownRoot]);
 
   return (
     <>
@@ -748,6 +834,33 @@ export function App() {
           </div>
           <div className={appStyles.titlebarFlexSpacer} aria-hidden />
           <div className={appStyles.titlebarCluster}>
+            <button
+              type="button"
+              className={appStyles.titlebarIconButton}
+              onClick={cycleColorScheme}
+              title={
+                colorSchemePref === "system"
+                  ? "Appearance: System (follows OS). Click to use light."
+                  : colorSchemePref === "light"
+                    ? "Appearance: Light. Click to use dark."
+                    : "Appearance: Dark. Click to follow system."
+              }
+              aria-label={
+                colorSchemePref === "system"
+                  ? "Color scheme: system. Activate to switch to light."
+                  : colorSchemePref === "light"
+                    ? "Color scheme: light. Activate to switch to dark."
+                    : "Color scheme: dark. Activate to switch to system."
+              }
+            >
+              {colorSchemePref === "system" ? (
+                <ModernTv width={16} height={16} strokeWidth={2} aria-hidden />
+              ) : colorSchemePref === "light" ? (
+                <SunLight width={16} height={16} strokeWidth={2} aria-hidden />
+              ) : (
+                <HalfMoon width={16} height={16} strokeWidth={2} aria-hidden />
+              )}
+            </button>
             <button
               type="button"
               className={appStyles.titlebarIconButton}
@@ -809,26 +922,70 @@ export function App() {
               onClose={closeTab}
               onNew={addTab}
             />
-            <div ref={scrollContainerRef} className={appStyles.contentWrapper}>
-              <main
-                id="content"
-                className={`${appStyles.main} ${showWelcome ? appStyles.mainEmpty : ""}`}
-                tabIndex={-1}
+            <div className={appStyles.mainColumnStack}>
+              <div
+                ref={scrollContainerRef}
+                className={appStyles.contentWrapper}
               >
-                {showWelcome ? <Welcome onOpenFile={onOpenDialog} /> : null}
-                <MarkdownBody
-                  ref={markdownBodyRef}
-                  html={markdownHtml}
-                  hidden={showWelcome}
-                  onDiagramError={onDiagramError}
-                />
-              </main>
+                <main
+                  id="content"
+                  className={`${appStyles.main} ${showWelcome ? appStyles.mainEmpty : ""}`}
+                  tabIndex={-1}
+                >
+                  {showWelcome ? <Welcome onOpenFile={onOpenDialog} /> : null}
+                  {tabs.some((t) => {
+                    const c = tabContentCacheRef.current.get(t.id);
+                    return Boolean(t.path && c && c.path === t.path);
+                  }) ? (
+                    <div
+                      className={`${appStyles.markdownPaneShell} ${showWelcome ? appStyles.markdownPaneShellHiddenWhileWelcome : ""}`}
+                    >
+                      {tabs.map((t) => {
+                        const cached = tabContentCacheRef.current.get(t.id);
+                        if (!t.path || !cached || cached.path !== t.path) {
+                          return null;
+                        }
+                        const isActive =
+                          t.id === activeTabId && !showWelcome;
+                        return (
+                          <div
+                            key={t.id}
+                            className={
+                              isActive
+                                ? appStyles.markdownPaneActive
+                                : appStyles.markdownPaneInactive
+                            }
+                          >
+                            <MarkdownBody
+                              ref={(handle) => {
+                                if (handle) {
+                                  markdownBodyHandlesRef.current.set(
+                                    t.id,
+                                    handle,
+                                  );
+                                } else {
+                                  markdownBodyHandlesRef.current.delete(t.id);
+                                }
+                              }}
+                              html={cached.html}
+                              isActive={isActive}
+                              mermaidLayoutNamespace={t.id}
+                              resolvedColorScheme={resolvedColorScheme}
+                              onDiagramError={onDiagramError}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </main>
+              </div>
+              {!showWelcome ? (
+                <footer className={statusStyles.status} aria-live="polite">
+                  {statusText}
+                </footer>
+              ) : null}
             </div>
-            {!showWelcome && (
-              <footer className={statusStyles.status} aria-live="polite">
-                {statusText}
-              </footer>
-            )}
           </div>
 
           <div
@@ -838,9 +995,7 @@ export function App() {
             aria-hidden={!tocPanelExpanded}
             aria-label={tocPanelExpanded ? "Resize outline panel" : undefined}
             onPointerDown={onTocPanelResizePointerDown}
-            onDoubleClick={() =>
-              setTocPanelWidthPx(DEFAULT_TOC_PANEL_WIDTH_PX)
-            }
+            onDoubleClick={() => setTocPanelWidthPx(DEFAULT_TOC_PANEL_WIDTH_PX)}
           />
 
           {/* TOC side panel */}

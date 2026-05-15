@@ -1,7 +1,9 @@
 /* Generated markdown — class name is stable for dangerouslySetInnerHTML */
 .markdown-body {
-  padding-bottom: 32px;
-  -webkit-app-region: no-drag;
+  flex: 1;
+  // min-height: 100%;
+  padding-bottom: 64px;
+  // -webkit-app-region: no-drag;
 
   .doc-metadata {
     margin: 0 0 24px;
@@ -56,19 +58,20 @@
     line-height: 1.25;
     font-weight: 600;
     letter-spacing: -0.02em;
-    margin: 32px 0 16px;
+    // margin: 32px 0 16px;
+    padding: 16px 0 8px;
   }
 
   h1 {
     font-size: 28px;
     border-bottom: 1px solid var(--border);
-    padding-bottom: 8px;
+    // padding-bottom: 8px;
   }
 
   h2 {
     font-size: 24px;
     border-bottom: 1px solid var(--border);
-    padding-bottom: 6px;
+    // padding-bottom: 6px;
   }
 
   h3 {
@@ -181,10 +184,49 @@
     border-radius: 6px;
   }
 
+  .mermaid-host {
+    margin: 24px 0;
+    position: relative;
+  }
+
+  .mermaid-host__bridge {
+    display: contents;
+  }
+
+  .mermaid-host .mermaid {
+    margin: 0;
+    overflow-x: auto;
+    min-height: 32px;
+    text-align: center;
+
+    & > svg {
+      display: inline-block;
+      max-width: 100%;
+      height: auto;
+      vertical-align: top;
+    }
+  }
+
   .mermaid {
     margin: 24px 0;
-    display: flex;
-    justify-content: center;
     overflow-x: auto;
+    min-height: 32px;
+    text-align: center;
+
+    & > svg {
+      display: inline-block;
+      max-width: 100%;
+      height: auto;
+      vertical-align: top;
+    }
+  }
+
+  .mermaid--error {
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--code-background);
+    text-align: left;
+    white-space: pre-wrap;
   }
 }

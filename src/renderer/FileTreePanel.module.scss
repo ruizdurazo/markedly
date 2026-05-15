@@ -112,14 +112,8 @@
 .error {
   font-size: 12px;
   line-height: 16px;
-  color: #c41a1a;
+  color: var(--error-text);
   margin: 0 0 8px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .error {
-    color: #ff6961;
-  }
 }
 
 .loading {

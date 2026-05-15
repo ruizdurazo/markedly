@@ -12,6 +12,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type {
+  ColorSchemePreference,
   DirTreeNode,
   ListMarkdownTreeResult,
   ResolvedMdLink,
@@ -278,6 +279,10 @@ function broadcastThemeChanged() {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send("md:theme-changed");
   }
+}
+
+function isColorSchemePreference(x: unknown): x is ColorSchemePreference {
+  return x === "system" || x === "light" || x === "dark";
 }
 
 function createWindow(): BrowserWindow {
@@ -579,6 +584,11 @@ if (!gotLock) {
 
     nativeTheme.on("updated", () => {
       broadcastThemeChanged();
+    });
+
+    ipcMain.handle("md:set-native-color-scheme", (_e, pref: unknown) => {
+      if (!isColorSchemePreference(pref)) return;
+      nativeTheme.themeSource = pref;
     });
 
     ipcMain.handle("md:new-window", () => {

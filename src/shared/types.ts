@@ -34,8 +34,15 @@ export type DirTreeFile = {
 
 export type DirTreeNode = DirTreeDir | DirTreeFile;
 
-export type ListMarkdownTreeOk = { ok: true; root: string; tree: DirTreeNode[] };
+export type ListMarkdownTreeOk = {
+  ok: true;
+  root: string;
+  tree: DirTreeNode[];
+};
 
 export type ListMarkdownTreeErr = { ok: false; error: string };
 
 export type ListMarkdownTreeResult = ListMarkdownTreeOk | ListMarkdownTreeErr;
+
+/** In-app appearance: OS-driven, forced light, or forced dark. */
+export type ColorSchemePreference = "system" | "light" | "dark";

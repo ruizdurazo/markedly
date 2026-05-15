@@ -216,4 +216,22 @@ hr {
 .mermaid {
   margin: 0 0 16px;
   text-align: center;
+  overflow-x: auto;
+  min-height: 32px;
+
+  & > svg {
+    display: inline-block;
+    max-width: 100%;
+    height: auto;
+    vertical-align: top;
+  }
+}
+
+.mermaid--error {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--code-background);
+  text-align: left;
+  white-space: pre-wrap;
 }

@@ -53,15 +53,19 @@
 }
 
 .mainColumn {
-  margin-top: 0;
-  margin-bottom: 0;
-  margin-left: 0;
-  margin-right: 0;
+  margin: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+}
+
+.mainColumnStack {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 // Overlap the 4px resize handle only while that handle is visible (panel expanded).
@@ -80,6 +84,7 @@
 }
 
 .titlebarRow {
+  z-index: 1;
   display: flex;
   align-items: center;
   height: 100%;
@@ -132,25 +137,55 @@
 
 .contentWrapper {
   flex: 1;
+  // display: flex;
+  // flex-direction: column;
+  // min-height: 100%;
   min-height: 0;
   overflow: auto;
 }
 
 .main {
   flex: 1;
-  -webkit-app-region: no-drag;
-  padding: 48px 24px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 24px;
   max-width: 700px;
   margin: 0 auto;
   width: 100%;
+  overflow: visible;
 
   &:focus {
     outline: none;
   }
 }
 
+.markdownPaneShell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.markdownPaneShellHiddenWhileWelcome {
+  display: none;
+}
+
+.markdownPaneActive {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.markdownPaneInactive {
+  display: none;
+}
+
 .mainEmpty {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
 }

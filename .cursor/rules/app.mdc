@@ -35,6 +35,7 @@ You are building a desktop application that allows users to view Markdown files.
 - marked
 - marked-emoji
 - mermaid
+- motion
 - react
 - react-dom
 - yaml

@@ -34,7 +34,7 @@
   height: 40px;
   border: none;
   background: var(--foreground);
-  color: white;
+  color: var(--background);
   -webkit-app-region: no-drag;
 
   &:hover {

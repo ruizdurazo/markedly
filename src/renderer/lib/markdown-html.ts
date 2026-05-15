@@ -2,7 +2,12 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import ghDark from "highlight.js/styles/github-dark.css?inline";
 import ghLight from "highlight.js/styles/github.css?inline";
+import type { ColorSchemePreference } from "../../shared/types.js";
 import { markedRenderingExtensions } from "../marked-extensions";
+import { wrapBareMermaidMarkdown } from "./wrap-bare-mermaid.js";
+
+const HLJS_LIGHT_ID = "markedly-hljs-light";
+const HLJS_DARK_ID = "markedly-hljs-dark";
 
 marked.use(...markedRenderingExtensions);
 
@@ -17,22 +22,71 @@ export function escapeHtml(text: string): string {
     .replaceAll("'", "&#039;");
 }
 
+function getHljsStyleElements(): {
+  light: HTMLStyleElement | null;
+  dark: HTMLStyleElement | null;
+} {
+  return {
+    light: document.getElementById(HLJS_LIGHT_ID) as HTMLStyleElement | null,
+    dark: document.getElementById(HLJS_DARK_ID) as HTMLStyleElement | null,
+  };
+}
+
+/** Idempotent: creates highlight.js stylesheets if missing. */
 export function injectHighlighterTheme(): void {
+  if (document.getElementById(HLJS_LIGHT_ID)) return;
   const light = document.createElement("style");
-  light.setAttribute("data-hljs", "light");
+  light.id = HLJS_LIGHT_ID;
   light.textContent = ghLight;
   const dark = document.createElement("style");
-  dark.setAttribute("data-hljs", "dark");
-  dark.textContent = `@media (prefers-color-scheme: dark) { ${ghDark} }`;
+  dark.id = HLJS_DARK_ID;
+  dark.textContent = ghDark;
   document.head.append(light, dark);
 }
 
+export function syncHighlighterColorScheme(
+  preference: ColorSchemePreference,
+): void {
+  const { light, dark } = getHljsStyleElements();
+  if (!light || !dark) return;
+  if (preference === "light") {
+    light.media = "all";
+    dark.media = "not all";
+  } else if (preference === "dark") {
+    light.media = "not all";
+    dark.media = "all";
+  } else {
+    light.media = "(prefers-color-scheme: light)";
+    dark.media = "(prefers-color-scheme: dark)";
+  }
+}
+
 export function parseMarkdown(md: string): string {
-  const raw = marked.parse(md, { async: false }) as string;
+  const raw = marked.parse(wrapBareMermaidMarkdown(md), {
+    async: false,
+  }) as string;
   return purify.sanitize(raw, {
-    ADD_ATTR: ["id", "class", "style"],
+    ADD_ATTR: [
+      "id",
+      "class",
+      "style",
+      "data-mermaid-source",
+      "data-markedly-expand-layout",
+    ],
     ADD_TAGS: ["svg", "path", "g", "marker", "defs", "use"],
   });
+}
+
+/** Inserts a React mount point before each `.mermaid` inside `.mermaid-host` (idempotent). */
+export function prepareMermaidDiagramHosts(root: HTMLElement): void {
+  for (const host of root.querySelectorAll<HTMLElement>(".mermaid-host")) {
+    if (host.querySelector(":scope > .mermaid-host__bridge")) continue;
+    const mermaid = host.querySelector<HTMLElement>(":scope > .mermaid");
+    if (!mermaid) continue;
+    const bridge = document.createElement("div");
+    bridge.className = "mermaid-host__bridge";
+    host.insertBefore(bridge, mermaid);
+  }
 }
 
 export function buildMetadataTableHtml(
@@ -162,16 +216,49 @@ export function scrollMarkdownToFragment(
   el?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-export async function renderMermaid(scope: ParentNode): Promise<void> {
-  const nodes = scope.querySelectorAll(".mermaid");
+export async function renderMermaid(
+  scope: ParentNode,
+  resolved: "light" | "dark",
+): Promise<void> {
+  const nodes = Array.from(scope.querySelectorAll<HTMLElement>(".mermaid"));
   if (nodes.length === 0) return;
   const m = (await import("mermaid")).default;
-  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   m.initialize({
     startOnLoad: false,
-    theme: dark ? "dark" : "default",
-    securityLevel: "strict",
+    theme: resolved === "dark" ? "dark" : "default",
+    securityLevel: "loose",
     fontFamily: "inherit",
   });
-  await m.run({ nodes: Array.from(nodes) as HTMLElement[] });
+
+  const errors: unknown[] = [];
+  for (const node of nodes) {
+    const sourceAttr = node.getAttribute("data-mermaid-source");
+    let source = node.textContent ?? "";
+    if (sourceAttr) {
+      try {
+        source = decodeURIComponent(sourceAttr);
+      } catch {
+        source = node.textContent ?? "";
+      }
+    }
+    if (!source.trim()) continue;
+
+    try {
+      const id = `markedly-mermaid-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+      const { svg, bindFunctions } = await m.render(id, source);
+      node.innerHTML = svg;
+      bindFunctions?.(node);
+      node.classList.remove("mermaid--error");
+    } catch (error) {
+      errors.push(error);
+      node.classList.add("mermaid--error");
+      node.textContent = source;
+    }
+  }
+
+  if (errors.length > 0) {
+    throw errors[0];
+  }
 }

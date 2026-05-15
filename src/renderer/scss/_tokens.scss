@@ -1,5 +1,5 @@
-:root {
-  color-scheme: light dark;
+@mixin tokens-light {
+  color-scheme: light;
   --background: #fff;
   --foreground: #1d1d1f;
   --muted: #6e6e73;
@@ -9,18 +9,39 @@
   --accent: #0066cc;
   --accent-hover: #0055b3;
   --code-background: #f7f7f9;
+  --error-text: #c41a1a;
+  --backdrop: #00000040;
+}
+
+@mixin tokens-dark {
+  color-scheme: dark;
+  --background: #1c1c1e;
+  --foreground: #f5f5f7;
+  --muted: #a1a1a6;
+  --very-muted: #2c2c2e;
+  --border: rgba(255, 255, 255, 0.12);
+  --card: #2c2c2e;
+  --accent: #0a84ff;
+  --accent-hover: #409cff;
+  --code-background: #2c2c2e;
+  --error-text: #ff6961;
+  --backdrop: #00000080;
+}
+
+:root {
+  @include tokens-light;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #1c1c1e;
-    --foreground: #f5f5f7;
-    --muted: #a1a1a6;
-    --very-muted: #2c2c2e;
-    --border: rgba(255, 255, 255, 0.12);
-    --card: #2c2c2e;
-    --accent: #0a84ff;
-    --accent-hover: #409cff;
-    --code-background: #2c2c2e;
+  :root:not([data-color-scheme]) {
+    @include tokens-dark;
   }
+}
+
+:root[data-color-scheme="light"] {
+  @include tokens-light;
+}
+
+:root[data-color-scheme="dark"] {
+  @include tokens-dark;
 }
