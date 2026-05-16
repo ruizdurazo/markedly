@@ -2,6 +2,8 @@
 
 A minimal Markdown viewer built with [Electron](https://www.electronjs.org/). Editing is out of scope—open a file, read it, render it safely.
 
+![Markedly](./screenshot.png)
+
 ## Features
 
 - **Open** via File → Open… (`⌘O`), drag-and-drop, or launch with a path: `npx electron . ./fixtures/sample.md`
