@@ -82,7 +82,7 @@ export const MarkdownBody = forwardRef<MarkdownBodyHandle, MarkdownBodyProps>(
       prepareMermaidDiagramHosts(root);
       let cancelled = false;
       void renderMermaid(root, resolvedColorScheme)
-        .then(() => {
+        .then((summary) => {
           if (cancelled) return;
           let expandIndex = 0;
           for (const bridge of root.querySelectorAll<HTMLElement>(
@@ -106,6 +106,9 @@ export const MarkdownBody = forwardRef<MarkdownBodyHandle, MarkdownBodyProps>(
             reactRoot.render(
               <MermaidDiagramHost layoutId={layoutId} mermaidEl={mermaid} />,
             );
+          }
+          if (summary.failures > 0 || summary.warnings > 0) {
+            onDiagramError();
           }
         })
         .catch(() => {

@@ -2,6 +2,10 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { markedRenderingExtensions } from "../renderer/marked-extensions";
 import { formatMetadataCell, splitFrontmatter } from "../renderer/frontmatter";
+import {
+  cleanupMermaidRenderContainers,
+  postprocessMermaidSvg,
+} from "../renderer/lib/mermaid-svg.js";
 import { wrapBareMermaidMarkdown } from "../renderer/lib/wrap-bare-mermaid.js";
 
 type QuickLookBridge = {
@@ -133,9 +137,9 @@ async function renderMermaid(scope: ParentNode): Promise<void> {
     theme: dark ? "dark" : "default",
     securityLevel: "loose",
     fontFamily: "inherit",
+    suppressErrorRendering: true,
   });
 
-  const errors: unknown[] = [];
   for (const node of nodes) {
     const sourceAttr = node.getAttribute("data-mermaid-source");
     let source = node.textContent ?? "";
@@ -148,24 +152,38 @@ async function renderMermaid(scope: ParentNode): Promise<void> {
     }
     if (!source.trim()) continue;
 
+    node.classList.remove("mermaid--error", "mermaid--warn");
     try {
       const id = `markedly-mermaid-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2)}`;
-      const { svg, bindFunctions } = await mermaid.render(id, source);
-      node.innerHTML = svg;
+      let svg: string;
+      let bindFunctions: ((el: Element) => void) | undefined;
+      try {
+        ({ svg, bindFunctions } = await mermaid.render(id, source));
+      } finally {
+        cleanupMermaidRenderContainers();
+      }
+      const processed = postprocessMermaidSvg(svg);
+      if (
+        processed.isErrorOnly ||
+        processed.html.includes("Syntax error in text")
+      ) {
+        node.classList.add("mermaid--error");
+        node.textContent = source;
+        continue;
+      }
+      node.innerHTML = processed.html;
       bindFunctions?.(node);
-      node.classList.remove("mermaid--error");
-    } catch (error) {
-      errors.push(error);
+      if (processed.hadEmbeddedError) {
+        node.classList.add("mermaid--warn");
+      }
+    } catch {
       node.classList.add("mermaid--error");
       node.textContent = source;
     }
   }
-
-  if (errors.length > 0) {
-    throw errors[0];
-  }
+  cleanupMermaidRenderContainers();
 }
 
 function showError(title: string, detail: string): void {

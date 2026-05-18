@@ -225,6 +225,11 @@ hr {
     height: auto;
     vertical-align: top;
   }
+
+  .error-icon,
+  .error-text {
+    display: none;
+  }
 }
 
 .mermaid--error {

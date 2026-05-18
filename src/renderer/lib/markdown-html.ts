@@ -4,7 +4,16 @@ import ghDark from "highlight.js/styles/github-dark.css?inline";
 import ghLight from "highlight.js/styles/github.css?inline";
 import type { ColorSchemePreference } from "../../shared/types.js";
 import { markedRenderingExtensions } from "../marked-extensions";
+import {
+  cleanupMermaidRenderContainers,
+  postprocessMermaidSvg,
+} from "./mermaid-svg.js";
 import { wrapBareMermaidMarkdown } from "./wrap-bare-mermaid.js";
+
+export type MermaidRenderSummary = {
+  failures: number;
+  warnings: number;
+};
 
 const HLJS_LIGHT_ID = "markedly-hljs-light";
 const HLJS_DARK_ID = "markedly-hljs-dark";
@@ -219,18 +228,21 @@ export function scrollMarkdownToFragment(
 export async function renderMermaid(
   scope: ParentNode,
   resolved: "light" | "dark",
-): Promise<void> {
+): Promise<MermaidRenderSummary> {
   const nodes = Array.from(scope.querySelectorAll<HTMLElement>(".mermaid"));
-  if (nodes.length === 0) return;
+  if (nodes.length === 0) return { failures: 0, warnings: 0 };
   const m = (await import("mermaid")).default;
   m.initialize({
     startOnLoad: false,
     theme: resolved === "dark" ? "dark" : "default",
     securityLevel: "loose",
     fontFamily: "inherit",
+    // Avoid drawing the bomb/error SVG into a body temp node that Mermaid leaks on throw.
+    suppressErrorRendering: true,
   });
 
-  const errors: unknown[] = [];
+  let failures = 0;
+  let warnings = 0;
   for (const node of nodes) {
     const sourceAttr = node.getAttribute("data-mermaid-source");
     let source = node.textContent ?? "";
@@ -243,22 +255,44 @@ export async function renderMermaid(
     }
     if (!source.trim()) continue;
 
+    node.classList.remove("mermaid--error", "mermaid--warn");
     try {
       const id = `markedly-mermaid-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2)}`;
-      const { svg, bindFunctions } = await m.render(id, source);
-      node.innerHTML = svg;
+      let svg: string;
+      let bindFunctions: ((el: Element) => void) | undefined;
+      try {
+        ({ svg, bindFunctions } = await m.render(id, source));
+      } finally {
+        cleanupMermaidRenderContainers();
+      }
+      const processed = postprocessMermaidSvg(svg);
+      if (
+        processed.isErrorOnly ||
+        processed.html.includes("Syntax error in text")
+      ) {
+        failures += 1;
+        node.classList.add("mermaid--error");
+        node.textContent = source;
+        continue;
+      }
+      node.innerHTML = processed.html;
       bindFunctions?.(node);
-      node.classList.remove("mermaid--error");
-    } catch (error) {
-      errors.push(error);
+      if (processed.hadEmbeddedError) {
+        warnings += 1;
+        node.classList.add("mermaid--warn");
+        node.dataset.markedlyMermaidWarn = "1";
+      } else {
+        delete node.dataset.markedlyMermaidWarn;
+      }
+    } catch {
+      failures += 1;
       node.classList.add("mermaid--error");
       node.textContent = source;
     }
   }
 
-  if (errors.length > 0) {
-    throw errors[0];
-  }
+  cleanupMermaidRenderContainers();
+  return { failures, warnings };
 }
