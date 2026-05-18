@@ -29,6 +29,7 @@ declare global {
       onNewTab: (cb: () => void) => () => void;
       onCloseTab: (cb: () => void) => () => void;
       onRequestOpenFolder: (cb: () => void) => () => void;
+      onFind: (cb: () => void) => () => void;
     };
   }
 }

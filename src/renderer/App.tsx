@@ -18,11 +18,18 @@ import {
   scrollMarkdownToFragment,
   syncHighlighterColorScheme,
 } from "./lib/markdown-html";
+import {
+  applyFindHighlights,
+  clearFindHighlights,
+  collectFindRanges,
+  fingerprintString,
+  scrollRangeIntoView,
+} from "./lib/find-in-markdown-root";
 import { MarkdownBody, type MarkdownBodyHandle } from "./MarkdownBody";
 import statusStyles from "./StatusBar.module.scss";
 import SidebarLeftIcon from "../assets/icons/sidebar-left.svg?react";
 import SidebarRightIcon from "../assets/icons/sidebar-right.svg?react";
-import { HalfMoon, ModernTv, SunLight } from "iconoir-react";
+import { HalfMoon, ModernTv, Search, SunLight, Xmark } from "iconoir-react";
 import { TabStrip } from "./TabStrip";
 import appStyles from "./App.module.scss";
 import { Welcome } from "./Welcome";
@@ -99,6 +106,9 @@ export function App() {
   ]);
   const [activeTabId, setActiveTabId] = useState(initialTabId);
   const [statusText, setStatusText] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMatchIndex, setSearchMatchIndex] = useState(0);
+  const [findMatchTotal, setFindMatchTotal] = useState(0);
   const [markdownHtml, setMarkdownHtml] = useState("");
   const [showWelcome, setShowWelcome] = useState(true);
   const [filePanelExpanded, setFilePanelExpanded] = useState(true);
@@ -131,9 +141,9 @@ export function App() {
   );
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const markdownBodyHandlesRef = useRef(
-    new Map<string, MarkdownBodyHandle>(),
-  );
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const findScrollTargetKeyRef = useRef("");
+  const markdownBodyHandlesRef = useRef(new Map<string, MarkdownBodyHandle>());
   const showWelcomeRef = useRef(showWelcome);
   showWelcomeRef.current = showWelcome;
   const ignoreScrollRef = useRef(false);
@@ -572,6 +582,19 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (showWelcome) {
+      setSearchQuery("");
+      findScrollTargetKeyRef.current = "";
+      setFindMatchTotal(0);
+      setSearchMatchIndex(0);
+    }
+  }, [showWelcome]);
+
+  useEffect(() => {
+    setSearchMatchIndex(0);
+  }, [activeTabId, markdownHtml]);
+
+  useEffect(() => {
     const t = tabs.find((x) => x.id === activeTabId);
     if (t?.path) {
       document.title = `${tabLabel(t)} — Markedly`;
@@ -624,6 +647,16 @@ export function App() {
       window.markedly.onRequestOpenFolder(() => {
         void pickFolderForFileTree();
       }),
+      window.markedly.onFind(() => {
+        if (showWelcomeRef.current) return;
+        const root = getActiveMarkdownRoot();
+        if (!root) return;
+        const input = searchInputRef.current;
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }),
     ];
     return () => {
       for (const u of unsubs) u();
@@ -631,11 +664,31 @@ export function App() {
   }, [
     addTab,
     closeActiveTabOrWindow,
+    getActiveMarkdownRoot,
     loadPath,
     openFilePathSmart,
     openPathInNewTab,
     pickFolderForFileTree,
   ]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const findHotkey =
+        (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key === "f";
+      if (!findHotkey) return;
+      if (showWelcomeRef.current) return;
+      const root = getActiveMarkdownRoot();
+      if (!root) return;
+      e.preventDefault();
+      const input = searchInputRef.current;
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [getActiveMarkdownRoot]);
 
   useEffect(() => {
     const onDragOver = (e: DragEvent) => {
@@ -803,18 +856,87 @@ export function App() {
     );
   }, [activeTabId, getActiveMarkdownRoot, markdownHtml, showWelcome]);
 
-  const activateTocEntry = useCallback((index: number) => {
+  const activateTocEntry = useCallback(
+    (index: number) => {
+      const root = getActiveMarkdownRoot();
+      const scrollParent = scrollContainerRef.current;
+      if (!root || !scrollParent) return;
+      const headings = getMarkdownHeadingElements(root);
+      const el = headings[index];
+      if (!el) return;
+      scrollElementIntoScrollParent(el, scrollParent, {
+        behavior: "smooth",
+        marginTop: 8,
+      });
+    },
+    [getActiveMarkdownRoot],
+  );
+
+  const bumpSearchMatch = useCallback(
+    (delta: number) => {
+      if (showWelcome) return;
+      const root = getActiveMarkdownRoot();
+      if (!root) return;
+      const ranges = collectFindRanges(root, searchQuery);
+      if (ranges.length === 0) return;
+      setSearchMatchIndex((i) => {
+        const n = ranges.length;
+        return (((i + delta) % n) + n) % n;
+      });
+    },
+    [getActiveMarkdownRoot, searchQuery, showWelcome],
+  );
+
+  useLayoutEffect(() => {
+    const sc = scrollContainerRef.current;
     const root = getActiveMarkdownRoot();
-    const scrollParent = scrollContainerRef.current;
-    if (!root || !scrollParent) return;
-    const headings = getMarkdownHeadingElements(root);
-    const el = headings[index];
-    if (!el) return;
-    scrollElementIntoScrollParent(el, scrollParent, {
-      behavior: "smooth",
-      marginTop: 8,
-    });
-  }, [getActiveMarkdownRoot]);
+    if (showWelcome || !root || !sc) {
+      clearFindHighlights();
+      setFindMatchTotal(0);
+      return () => {
+        clearFindHighlights();
+      };
+    }
+    const ranges = collectFindRanges(root, searchQuery);
+    if (ranges.length === 0) {
+      clearFindHighlights();
+      setFindMatchTotal(0);
+      if (searchMatchIndex !== 0) {
+        setSearchMatchIndex(0);
+      }
+      findScrollTargetKeyRef.current = "";
+      return () => {
+        clearFindHighlights();
+      };
+    }
+
+    const safeIdx = Math.min(searchMatchIndex, ranges.length - 1);
+    if (safeIdx !== searchMatchIndex) {
+      setSearchMatchIndex(safeIdx);
+    }
+
+    applyFindHighlights(ranges, safeIdx);
+    setFindMatchTotal(ranges.length);
+
+    const hp = fingerprintString(markdownHtml);
+    const scrollKey = `${activeTabId}\0${searchQuery}\0${markdownHtml.length}\0${hp}\0${safeIdx}\0${resolvedColorScheme}`;
+    if (scrollKey !== findScrollTargetKeyRef.current) {
+      findScrollTargetKeyRef.current = scrollKey;
+      scrollRangeIntoView(ranges[safeIdx]!, sc);
+    }
+
+    return () => {
+      clearFindHighlights();
+    };
+  }, [
+    activeTabId,
+    getActiveMarkdownRoot,
+    markdownHtml,
+    resolvedColorScheme,
+    searchMatchIndex,
+    searchQuery,
+    showWelcome,
+  ]);
 
   return (
     <>
@@ -831,6 +953,100 @@ export function App() {
             >
               <SidebarLeftIcon width={16} height={16} aria-hidden />
             </button>
+            <div
+              className={
+                showWelcome
+                  ? `${appStyles.titlebarSearch} ${appStyles.titlebarSearchWelcomeOnly}`
+                  : appStyles.titlebarSearch
+              }
+            >
+              {showWelcome ? (
+                <span
+                  className={appStyles.titlebarSearchIconOnly}
+                  role="img"
+                  aria-label="Find: open a document to search"
+                  title="Open a document to search"
+                >
+                  <Search
+                    width={16}
+                    height={16}
+                    strokeWidth={2}
+                    className={appStyles.titlebarSearchIcon}
+                    aria-hidden
+                  />
+                </span>
+              ) : (
+                <div className={appStyles.titlebarSearchRow}>
+                  <div className={appStyles.titlebarSearchField} role="search">
+                    <span
+                      className={appStyles.titlebarSearchInputLeading}
+                      aria-hidden
+                    >
+                      <Search
+                        width={16}
+                        height={16}
+                        strokeWidth={2}
+                        className={appStyles.titlebarSearchInputIcon}
+                      />
+                    </span>
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      className={appStyles.titlebarSearchInput}
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setSearchMatchIndex(0);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setSearchQuery("");
+                          e.currentTarget.blur();
+                          return;
+                        }
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          bumpSearchMatch(e.shiftKey ? -1 : 1);
+                        }
+                      }}
+                      placeholder="Find…"
+                      title="Find in document · Enter: next match · Shift+Enter: previous match"
+                      aria-label="Find in document"
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                    />
+                    {searchQuery !== "" ? (
+                      <button
+                        type="button"
+                        className={appStyles.titlebarSearchClear}
+                        aria-label="Clear search"
+                        title="Clear search"
+                        onClick={() => {
+                          setSearchQuery("");
+                          setSearchMatchIndex(0);
+                          searchInputRef.current?.focus();
+                        }}
+                      >
+                        <Xmark
+                          width={16}
+                          height={16}
+                          strokeWidth={2}
+                          aria-hidden
+                        />
+                      </button>
+                    ) : null}
+                  </div>
+                  {searchQuery.trim() !== "" ? (
+                    <span className={appStyles.titlebarSearchMeta} aria-hidden>
+                      {findMatchTotal === 0
+                        ? "No matches"
+                        : `${Math.min(searchMatchIndex, findMatchTotal - 1) + 1} / ${findMatchTotal} matches`}
+                    </span>
+                  ) : null}
+                </div>
+              )}
+            </div>
           </div>
           <div className={appStyles.titlebarFlexSpacer} aria-hidden />
           <div className={appStyles.titlebarCluster}>
@@ -912,9 +1128,11 @@ export function App() {
             }
           />
 
+          {/* Main column */}
           <div
             className={`${appStyles.mainColumn} ${filePanelExpanded ? appStyles.mainColumnLeftHandleOverlap : ""} ${tocPanelExpanded ? appStyles.mainColumnRightHandleOverlap : ""}`}
           >
+            {/* Tabs */}
             <TabStrip
               tabs={tabStripTabs}
               activeTabId={activeTabId}
@@ -922,6 +1140,8 @@ export function App() {
               onClose={closeTab}
               onNew={addTab}
             />
+
+            {/* Body */}
             <div className={appStyles.mainColumnStack}>
               <div
                 ref={scrollContainerRef}
@@ -945,8 +1165,7 @@ export function App() {
                         if (!t.path || !cached || cached.path !== t.path) {
                           return null;
                         }
-                        const isActive =
-                          t.id === activeTabId && !showWelcome;
+                        const isActive = t.id === activeTabId && !showWelcome;
                         return (
                           <div
                             key={t.id}
@@ -980,6 +1199,8 @@ export function App() {
                   ) : null}
                 </main>
               </div>
+
+              {/* Status bar */}
               {!showWelcome ? (
                 <footer className={statusStyles.status} aria-live="polite">
                   {statusText}

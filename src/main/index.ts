@@ -489,6 +489,14 @@ function buildMenu() {
         { role: "pasteAndMatchStyle" },
         { role: "delete" },
         { type: "separator" },
+        {
+          label: "Find…",
+          accelerator: "CmdOrCtrl+F",
+          click: () => {
+            getTargetWindowForOpen()?.webContents.send("md:find");
+          },
+        },
+        { type: "separator" },
         { role: "selectAll" },
       ],
     },

@@ -1,40 +1,66 @@
 .tabStrip {
-  // margin-top: -40px;
   flex-shrink: 0;
   display: flex;
   flex-direction: row;
-
-  align-items: stretch;
-  // gap: 2px;
-  // padding: 8px 0 0;
+  // align-items: stretch;
+  align-items: flex-start;
+  min-width: 0;
   border-bottom: 1px solid var(--border);
-  overflow-x: auto;
   -webkit-app-region: no-drag;
 }
 
-// :global(body.platform-mac) .tabStrip {
-//   // padding-left: 8px;
-//   // padding-left: 80px;
-//   // -webkit-app-region: drag;
-// }
+.tabScroll {
+  // flex: 1 1 0;
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  /* Custom scrollbar styling */
+  &::-webkit-scrollbar {
+    height: 2px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: var(--border);
+    // background: var(--very-muted);
+    position: absolute;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--muted);
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--foreground);
+  }
+}
 
 .tab {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex-shrink: 1;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  min-width: 120px;
   max-width: 220px;
   padding: 4px 4px 4px 12px;
   border: none;
   border-right: 1px solid var(--border);
-  background: transparent;
+  // background: transparent;
+  // background: var(--very-muted);
+  background: color-mix(in srgb, var(--foreground) 2%, transparent);
   color: var(--muted);
   -webkit-app-region: no-drag;
 
   &:hover {
     cursor: pointer;
     color: var(--foreground);
-    background: var(--very-muted);
+    background: var(--background);
+    // background: var(--very-muted);
 
     .tabClose {
       opacity: 1;
@@ -43,7 +69,6 @@
 }
 
 .tabSelect {
-  min-width: 0;
   margin: 0;
   font: inherit;
   font-size: 12px;
@@ -83,7 +108,8 @@
 
   &:hover {
     opacity: 1;
-    background: color-mix(in srgb, var(--foreground) 12%, transparent);
+    background: var(--very-muted);
+    // background: color-mix(in srgb, var(--foreground) 12%, transparent);
   }
 }
 
@@ -98,18 +124,28 @@
   }
 }
 
+.tabNewColumn {
+  flex: none;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tabNewColumn.tabNewScrollbarVisible {
+  border-left: 1px solid var(--border);
+}
+
 .tabNew {
-  flex-shrink: 0;
+  flex: none;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
-  padding-bottom: 3px;
-  padding-left: 6px;
+  padding-bottom: 2px;
   margin: 4px;
-  font: inherit;
   font-size: 16px;
   line-height: 1;
   border: none;
@@ -123,4 +159,12 @@
     color: var(--foreground);
     background: color-mix(in srgb, var(--foreground) 12%, transparent);
   }
+}
+
+.tabNewScrollbarSpacer {
+  background: var(--border);
+  flex-shrink: 0;
+  width: 100%;
+  height: 2px;
+  pointer-events: none;
 }

@@ -32,3 +32,13 @@ body {
   flex-direction: column;
   min-height: 0;
 }
+
+::highlight(markedly-find) {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+  color: inherit;
+}
+
+::highlight(markedly-find-current) {
+  background: color-mix(in srgb, var(--accent) 52%, transparent);
+  color: inherit;
+}

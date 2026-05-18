@@ -70,6 +70,11 @@ const api = {
     ipcRenderer.on("md:request-open-folder", fn);
     return () => ipcRenderer.removeListener("md:request-open-folder", fn);
   },
+  onFind: (cb: () => void) => {
+    const fn = () => cb();
+    ipcRenderer.on("md:find", fn);
+    return () => ipcRenderer.removeListener("md:find", fn);
+  },
 };
 
 contextBridge.exposeInMainWorld("markedly", api);
