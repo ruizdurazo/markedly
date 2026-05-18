@@ -9,6 +9,51 @@
   -webkit-app-region: no-drag;
 }
 
+.tabStripDragging {
+  user-select: none;
+  cursor: grabbing;
+}
+
+.tabPlaceholder {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  pointer-events: none;
+}
+
+.tabFloat {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--border);
+  border-bottom-color: transparent;
+  border-radius: 0;
+  background: var(--card);
+  color: var(--foreground);
+  pointer-events: none;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--foreground) 24%, transparent);
+}
+
+.tabCloseMuted {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding-bottom: 3px;
+  padding-left: 6px;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.55;
+}
+
 .tabScroll {
   // flex: 1 1 0;
   position: relative;
@@ -40,6 +85,7 @@
 }
 
 .tab {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -83,6 +129,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  // do not make the text selectable
+  user-select: none;
 }
 
 .tabClose {
@@ -105,6 +153,7 @@
   cursor: pointer;
   background: transparent;
   -webkit-app-region: no-drag;
+  user-select: none;
 
   &:hover {
     opacity: 1;
@@ -154,6 +203,7 @@
   color: var(--muted);
   cursor: pointer;
   -webkit-app-region: no-drag;
+  user-select: none;
 
   &:hover {
     color: var(--foreground);

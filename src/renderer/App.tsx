@@ -497,6 +497,20 @@ export function App() {
     [applyActiveTabToView],
   );
 
+  const reorderTabsByIds = useCallback((orderedIds: string[]) => {
+    setTabs((prev) => {
+      if (orderedIds.length !== prev.length) return prev;
+      const byId = new Map(prev.map((t) => [t.id, t]));
+      const next: Tab[] = [];
+      for (const id of orderedIds) {
+        const t = byId.get(id);
+        if (!t) return prev;
+        next.push(t);
+      }
+      return next;
+    });
+  }, []);
+
   const closeActiveTabOrWindow = useCallback(() => {
     closeTab(activeTabIdRef.current);
   }, [closeTab]);
@@ -1138,6 +1152,7 @@ export function App() {
               activeTabId={activeTabId}
               onSelect={activateTab}
               onClose={closeTab}
+              onReorderTabIds={reorderTabsByIds}
               onNew={addTab}
             />
 

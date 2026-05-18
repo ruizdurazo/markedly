@@ -7,7 +7,7 @@ import {
   nativeTheme,
   shell,
 } from "electron";
-import { watch } from "node:fs";
+import { existsSync, watch } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -303,6 +303,10 @@ function createWindow(): BrowserWindow {
   if (process.platform === "darwin") {
     options.titleBarStyle = "hiddenInset";
     options.trafficLightPosition = { ...DARWIN_WINDOW_BUTTON_BASE };
+    const windowIconPath = join(__dirname, "..", "..", "resources", "icon.icns");
+    if (existsSync(windowIconPath)) {
+      options.icon = windowIconPath;
+    }
   }
 
   const win = new BrowserWindow(options);

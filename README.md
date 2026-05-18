@@ -91,6 +91,6 @@ Output under `release/`. For Finder to discover the Quick Look extension, move t
 - [x] dark mode: add a toggle for light/dark mode. add an icon button next to the toc toggle in the titlebar (three icons that cycle: screen (system), sun (light), moon (dark)).
 - [x] search: add search with cmd+f, and highlight the search results. search only the current document tab. add the search input to the left hand side of the top titlebar, next to the file tree toggle.
 - [x] tabs horizontal scroll: add a tab min width and improve the tabs overflow styling when there are many tabs open and they are wider than the body (hide default scroll bar, make an ultra thin custom one).
-- [ ] drag tabs: make it possible to drag to reorder the tabs.
-- [ ] add app icons.
+- [x] drag tabs: make it possible to drag to reorder the tabs.
+- [x] add app icons.
 - [ ] optional: add a toggle for sans and serif fonts (ignoring code and code blocks,keep them as monospace).

@@ -8,6 +8,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "generate:emoji": "node scripts/generate-emoji-map.mjs",
+    "generate:mac-icon": "node scripts/build-mac-icon.mjs",
     "start": "npm run build && electron .",
     "dev": "node scripts/dev.mjs",
     "build:main": "node scripts/build-main.mjs",
@@ -45,11 +46,12 @@
   },
   "build": {
     "appId": "com.markedly.app",
-    "productName": "Markedly",
+    "productName": "markedly",
     "files": [
       "dist/**",
       "!dist/quicklook/**",
-      "package.json"
+      "package.json",
+      "resources/icon.icns"
     ],
     "extraFiles": [
       {
@@ -81,7 +83,8 @@
       "hardenedRuntime": true
     },
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "resources"
     }
   }
 }
