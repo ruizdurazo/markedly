@@ -152,6 +152,64 @@ ol {
   padding-left: 24px;
 }
 
+// Task items are normal list items plus a checkbox, so the marker has to go.
+// Box treatment matches the in-app preview in markdown-global.scss.
+.task-list-item {
+  position: relative;
+  margin-left: -24px;
+  padding-left: 24px;
+  list-style: none;
+
+  &::marker {
+    content: "";
+  }
+
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 4px;
+    box-sizing: border-box;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--background);
+  }
+
+  & > input[type="checkbox"],
+  & > p > input[type="checkbox"] {
+    position: absolute;
+    left: 0;
+    top: 4px;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    opacity: 0;
+    pointer-events: none;
+    appearance: none;
+  }
+}
+
+.task-list-item--checked {
+  &::before {
+    background: var(--foreground);
+    border-color: var(--foreground);
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    left: 6px;
+    top: 7px;
+    width: 4px;
+    height: 8px;
+    border: solid var(--background);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+}
+
 blockquote {
   padding-left: 16px;
   border-left: 4px solid var(--border);

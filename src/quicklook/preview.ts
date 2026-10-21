@@ -89,6 +89,31 @@ function rewriteRootRelativeAttrValue(value: string): string | null {
   return `.${trimmed}`;
 }
 
+function findTaskCheckbox(item: Element): HTMLInputElement | null {
+  for (const child of item.children) {
+    if (child instanceof HTMLInputElement && child.type === "checkbox") {
+      return child;
+    }
+    if (child instanceof HTMLParagraphElement) {
+      for (const nested of child.children) {
+        if (nested instanceof HTMLInputElement && nested.type === "checkbox") {
+          return nested;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function markTaskListItems(root: ParentNode): void {
+  for (const item of root.querySelectorAll("li")) {
+    const checkbox = findTaskCheckbox(item);
+    if (!checkbox) continue;
+    item.classList.add("task-list-item");
+    if (checkbox.checked) item.classList.add("task-list-item--checked");
+  }
+}
+
 function normalizeRootRelativeMediaUrls(root: HTMLElement): void {
   const pairs: { selector: string; attr: string }[] = [
     { selector: "img[src]", attr: "src" },
@@ -248,6 +273,7 @@ async function main(): Promise<void> {
       purify.sanitize(metadataHtml, {
         ADD_ATTR: ["class", "scope", "aria-label"],
       }) + parseMarkdown(body);
+    markTaskListItems(preview);
     normalizeRootRelativeMediaUrls(preview);
     await finishQuickLook(bridge);
 
