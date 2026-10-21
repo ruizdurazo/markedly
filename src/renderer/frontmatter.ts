@@ -3,6 +3,8 @@ import { parse as parseYaml } from "yaml";
 export type SplitFrontmatter = {
   body: string;
   metadata: Record<string, unknown> | null;
+  /** Opening fence through the closing fence, or null when `body` is the whole file. */
+  frontmatterRaw: string | null;
 };
 
 function stripBom(s: string): string {
@@ -95,7 +97,7 @@ export function splitFrontmatter(content: string): SplitFrontmatter {
     open++;
   }
   if (open >= rawLines.length || rawLines[open]!.trim() !== "---") {
-    return { body: content, metadata: null };
+    return { body: content, metadata: null, frontmatterRaw: null };
   }
 
   let close = -1;
@@ -106,16 +108,27 @@ export function splitFrontmatter(content: string): SplitFrontmatter {
     }
   }
   if (close < 0) {
-    return { body: content, metadata: null };
+    return { body: content, metadata: null, frontmatterRaw: null };
   }
 
   const fmBlock = rawLines.slice(open + 1, close).join("\n");
   const body = rawLines.slice(close + 1).join("\n");
   const meta = parseFrontmatterBlock(fmBlock);
   if (meta !== null) {
-    return { body, metadata: meta };
+    const frontmatterRaw = rawLines.slice(0, close + 1).join("\n");
+    return { body, metadata: meta, frontmatterRaw };
   }
-  return { body: content, metadata: null };
+  return { body: content, metadata: null, frontmatterRaw: null };
+}
+
+/** Put the original frontmatter fences back in front of an edited body. */
+export function composeMarkdown(
+  frontmatterRaw: string | null,
+  body: string,
+): string {
+  const text = frontmatterRaw == null ? body : `${frontmatterRaw}\n${body}`;
+  if (text === "") return "";
+  return text.endsWith("\n") ? text : `${text}\n`;
 }
 
 export function formatMetadataCell(value: unknown): string {

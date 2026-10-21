@@ -5,6 +5,11 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+function localBin(name) {
+  const executable = process.platform === "win32" ? `${name}.cmd` : name;
+  return join(root, "node_modules", ".bin", executable);
+}
+
 function waitForPort(port, host = "127.0.0.1", timeoutMs = 30000) {
   const start = Date.now();
   return new Promise((resolve, reject) => {
@@ -28,7 +33,7 @@ function waitForPort(port, host = "127.0.0.1", timeoutMs = 30000) {
 
 execSync("node scripts/build-main.mjs", { cwd: root, stdio: "inherit" });
 
-const vite = spawn("npx", ["vite", "--host", "127.0.0.1"], {
+const vite = spawn(localBin("vite"), ["--host", "127.0.0.1"], {
   cwd: root,
   stdio: "inherit",
   shell: process.platform === "win32",
@@ -41,7 +46,7 @@ const mainWatch = spawn("node", ["scripts/build-main.mjs", "--watch"], {
 
 await waitForPort(5173);
 
-const electron = spawn("npx", ["electron", "."], {
+const electron = spawn(localBin("electron"), ["."], {
   cwd: root,
   env: {
     ...process.env,

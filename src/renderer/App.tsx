@@ -8,7 +8,11 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { flushSync } from "react-dom";
-import { formatMetadataCell, splitFrontmatter } from "./frontmatter";
+import {
+  composeMarkdown,
+  formatMetadataCell,
+  splitFrontmatter,
+} from "./frontmatter";
 import {
   buildMetadataTableHtml,
   getMarkdownHeadingElements,
@@ -25,46 +29,114 @@ import {
   fingerprintString,
   scrollRangeIntoView,
 } from "./lib/find-in-markdown-root";
+import { MarkdownEditor } from "./MarkdownEditor";
 import { MarkdownBody, type MarkdownBodyHandle } from "./MarkdownBody";
 import statusStyles from "./StatusBar.module.scss";
 import SidebarLeftIcon from "../assets/icons/sidebar-left.svg?react";
 import SidebarRightIcon from "../assets/icons/sidebar-right.svg?react";
-import { HalfMoon, ModernTv, Search, SunLight, Xmark } from "iconoir-react";
+import TextSansIcon from "../assets/icons/text-sans.svg?react";
+import TextSerifIcon from "../assets/icons/text-serif.svg?react";
+import {
+  Check,
+  HalfMoon,
+  ModernTv,
+  EditPencil,
+  Search,
+  SunLight,
+  Xmark,
+} from "iconoir-react";
 import { TabStrip } from "./TabStrip";
 import appStyles from "./App.module.scss";
 import { Welcome } from "./Welcome";
 import type { ColorSchemePreference, DirTreeNode } from "../shared/types.js";
 import { FileTreePanel } from "./FileTreePanel";
 import { TocPanel, type TocEntry } from "./TocPanel";
+import { Tooltip } from "./Tooltip";
 import {
   applyColorSchemeToDocument,
   getResolvedColorScheme,
   readStoredColorSchemePreference,
   writeStoredColorSchemePreference,
 } from "./color-scheme";
+import {
+  applyFontPreferenceToDocument,
+  readStoredFontPreference,
+  writeStoredFontPreference,
+  type FontPreference,
+} from "./font-preference";
 
 type Tab = {
   id: string;
   path: string | null;
   stale: boolean;
+  dirty: boolean;
+  /** True once this tab is an open file or an untitled document. */
+  document: boolean;
+  /** Pencil is edit. Check saves and returns to the rendered preview. */
+  editing: boolean;
   scrollTop: number;
 };
 
-/** Per-tab rendered HTML + `<base href>` dir so switching tabs does not re-fetch or re-parse. */
+/** Per-tab Markdown source so switching tabs does not re-fetch. */
 type TabContentCache = {
+  body: string;
+  savedBody: string;
+  frontmatterRaw: string | null;
+  metadataHtml: string;
+  /** Rendered preview, including the metadata table. */
   html: string;
   dirUrl: string;
-  path: string;
+  path: string | null;
+  generation: number;
+  hydrated: boolean;
 };
 
 function newTabId(): string {
   return crypto.randomUUID();
 }
 
+function blankTab(id: string, scrollTop = 0): Tab {
+  return {
+    id,
+    path: null,
+    stale: false,
+    dirty: false,
+    document: false,
+    editing: false,
+    scrollTop,
+  };
+}
+
+function emptyDocumentCache(): TabContentCache {
+  return {
+    body: "",
+    savedBody: "",
+    frontmatterRaw: null,
+    metadataHtml: "",
+    html: "",
+    dirUrl: "",
+    path: null,
+    generation: 1,
+    hydrated: false,
+  };
+}
+
+function documentName(tab: Tab): string {
+  if (tab.path) {
+    const parts = tab.path.split(/[/\\]/);
+    return parts[parts.length - 1] || "Untitled";
+  }
+  if (tab.document) return "Untitled";
+  return "New tab";
+}
+
 function tabLabel(tab: Tab): string {
-  if (!tab.path) return "New tab";
-  const parts = tab.path.split(/[/\\]/);
-  return parts[parts.length - 1] || "Untitled";
+  const name = documentName(tab);
+  return tab.dirty ? `${name} •` : name;
+}
+
+function buildPreviewHtml(metadataHtml: string, body: string): string {
+  return metadataHtml + parseMarkdown(body);
 }
 
 const DEFAULT_FILE_PANEL_WIDTH_PX = 200;
@@ -99,11 +171,17 @@ function pathsFromDataTransfer(dt: DataTransfer | null): string[] {
   return paths;
 }
 
+function sameTocEntries(a: TocEntry[], b: TocEntry[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i].level !== b[i].level || a[i].text !== b[i].text) return false;
+  }
+  return true;
+}
+
 export function App() {
   const initialTabId = useMemo(() => newTabId(), []);
-  const [tabs, setTabs] = useState<Tab[]>([
-    { id: initialTabId, path: null, stale: false, scrollTop: 0 },
-  ]);
+  const [tabs, setTabs] = useState<Tab[]>([blankTab(initialTabId)]);
   const [activeTabId, setActiveTabId] = useState(initialTabId);
   const [statusText, setStatusText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -111,8 +189,8 @@ export function App() {
   const [findMatchTotal, setFindMatchTotal] = useState(0);
   const [markdownHtml, setMarkdownHtml] = useState("");
   const [showWelcome, setShowWelcome] = useState(true);
-  const [filePanelExpanded, setFilePanelExpanded] = useState(true);
-  const [tocPanelExpanded, setTocPanelExpanded] = useState(true);
+  const [filePanelExpanded, setFilePanelExpanded] = useState(false);
+  const [tocPanelExpanded, setTocPanelExpanded] = useState(false);
   const [filePanelWidthPx, setFilePanelWidthPx] = useState(
     DEFAULT_FILE_PANEL_WIDTH_PX,
   );
@@ -131,6 +209,9 @@ export function App() {
   const [colorSchemePref, setColorSchemePref] = useState<ColorSchemePreference>(
     () => readStoredColorSchemePreference(),
   );
+  const [fontPref, setFontPref] = useState<FontPreference>(() =>
+    readStoredFontPreference(),
+  );
   const [systemSchemeTick, setSystemSchemeTick] = useState(0);
   const colorSchemePrefRef = useRef(colorSchemePref);
   colorSchemePrefRef.current = colorSchemePref;
@@ -144,10 +225,13 @@ export function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const findScrollTargetKeyRef = useRef("");
   const markdownBodyHandlesRef = useRef(new Map<string, MarkdownBodyHandle>());
+  const editorRootsRef = useRef(new Map<string, HTMLElement>());
   const showWelcomeRef = useRef(showWelcome);
   showWelcomeRef.current = showWelcome;
   const ignoreScrollRef = useRef(false);
   const baseElRef = useRef<HTMLBaseElement | null>(null);
+  const skipUnloadPromptRef = useRef(false);
+  const saveLockRef = useRef(false);
   const tabsRef = useRef(tabs);
   const activeTabIdRef = useRef(activeTabId);
   const tabContentCacheRef = useRef(new Map<string, TabContentCache>());
@@ -157,11 +241,15 @@ export function App() {
   const getActiveMarkdownRoot = useCallback((): HTMLElement | null => {
     if (showWelcomeRef.current) return null;
     const id = activeTabIdRef.current;
+    const tab = tabsRef.current.find((t) => t.id === id);
+    if (tab?.editing) return editorRootsRef.current.get(id) ?? null;
     return markdownBodyHandlesRef.current.get(id)?.getRoot() ?? null;
   }, []);
 
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const activeEditing = Boolean(activeTab?.document && activeTab.editing);
   const activePathRef = useRef<string | null>(null);
-  activePathRef.current = tabs.find((t) => t.id === activeTabId)?.path ?? null;
+  activePathRef.current = activeTab?.path ?? null;
 
   const setBaseHref = useCallback((dirUrl: string) => {
     if (!baseElRef.current) {
@@ -195,6 +283,14 @@ export function App() {
     });
   }, []);
 
+  const toggleFont = useCallback(() => {
+    setFontPref((p) => {
+      const next: FontPreference = p === "sans" ? "serif" : "sans";
+      writeStoredFontPreference(next);
+      return next;
+    });
+  }, []);
+
   const loadPath = useCallback(
     async (filePath: string, options?: { fragment?: string }) => {
       const loadingTabId = activeTabIdRef.current;
@@ -209,7 +305,16 @@ export function App() {
         tabContentCacheRef.current.delete(loadingTabId);
         setTabs((prev) =>
           prev.map((t) =>
-            t.id === loadingTabId ? { ...t, path: null, stale: false } : t,
+            t.id === loadingTabId
+              ? {
+                  ...t,
+                  path: null,
+                  stale: false,
+                  dirty: false,
+                  document: false,
+                  editing: false,
+                }
+              : t,
           ),
         );
         if (activeTabIdRef.current === loadingTabId) {
@@ -222,22 +327,37 @@ export function App() {
         return;
       }
 
-      const { body, metadata } = splitFrontmatter(result.content);
-      const metaHtml =
-        metadata && Object.keys(metadata).length > 0
-          ? buildMetadataTableHtml(metadata, formatMetadataCell)
+      const split = splitFrontmatter(result.content);
+      const metadataHtml =
+        split.metadata && Object.keys(split.metadata).length > 0
+          ? buildMetadataTableHtml(split.metadata, formatMetadataCell)
           : "";
-      const html = metaHtml + parseMarkdown(body);
+      const previous = tabContentCacheRef.current.get(loadingTabId);
       tabContentCacheRef.current.set(loadingTabId, {
-        html,
+        body: split.body,
+        savedBody: split.body,
+        frontmatterRaw: split.frontmatterRaw,
+        metadataHtml,
+        html: buildPreviewHtml(metadataHtml, split.body),
         dirUrl: result.dirUrl,
         path: result.path,
+        generation: (previous?.generation ?? 0) + 1,
+        hydrated: false,
       });
 
       ignoreScrollRef.current = true;
       setTabs((prev) =>
         prev.map((t) =>
-          t.id === loadingTabId ? { ...t, path: result.path, stale: false } : t,
+          t.id === loadingTabId
+            ? {
+                ...t,
+                path: result.path,
+                stale: false,
+                dirty: false,
+                document: true,
+                editing: false,
+              }
+            : t,
         ),
       );
 
@@ -247,7 +367,7 @@ export function App() {
       }
 
       setBaseHref(result.dirUrl);
-      setMarkdownHtml(html);
+      setMarkdownHtml(buildPreviewHtml(metadataHtml, split.body));
       setShowWelcome(false);
       setStatusText(result.path);
 
@@ -271,7 +391,29 @@ export function App() {
   const applyActiveTabToView = useCallback(async () => {
     const t = getActiveTab();
     if (!t) return;
-    if (!t.path) {
+    const cached = tabContentCacheRef.current.get(t.id);
+    const showCached = () => {
+      ignoreScrollRef.current = true;
+      if (cached?.dirUrl) setBaseHref(cached.dirUrl);
+      else clearBaseHref();
+      setMarkdownHtml(cached?.html ?? "");
+      setShowWelcome(false);
+      setStatusText(
+        t.stale && t.path
+          ? `${t.path} changed on disk. Save will overwrite it.`
+          : t.path || "Untitled",
+      );
+      const scrollTopForTab = t.scrollTop;
+      requestAnimationFrame(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollTopForTab;
+        }
+        requestAnimationFrame(() => {
+          ignoreScrollRef.current = false;
+        });
+      });
+    };
+    if (!t.document || !cached) {
       ignoreScrollRef.current = true;
       setStatusText("");
       setShowWelcome(true);
@@ -287,25 +429,11 @@ export function App() {
       });
       return;
     }
-    const cached = tabContentCacheRef.current.get(t.id);
-    if (cached && cached.path === t.path && !t.stale) {
-      ignoreScrollRef.current = true;
-      setBaseHref(cached.dirUrl);
-      setMarkdownHtml(cached.html);
-      setShowWelcome(false);
-      setStatusText(cached.path);
-      const scrollTopForTab = t.scrollTop;
-      requestAnimationFrame(() => {
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollTop = scrollTopForTab;
-        }
-        requestAnimationFrame(() => {
-          ignoreScrollRef.current = false;
-        });
-      });
+    if (t.path && !t.dirty && (t.stale || cached.path !== t.path)) {
+      await loadPath(t.path);
       return;
     }
-    await loadPath(t.path);
+    showCached();
   }, [clearBaseHref, getActiveTab, loadPath, setBaseHref]);
 
   const openFilePathSmart = useCallback(
@@ -314,7 +442,7 @@ export function App() {
       const normalized = await window.markedly.normalizeMarkdownPath(filePath);
       if (!normalized) {
         const active = getActiveTab();
-        if (active?.path) {
+        if (active?.document) {
           const fromId = activeTabIdRef.current;
           const sc = scrollContainerRef.current?.scrollTop ?? 0;
           const id = newTabId();
@@ -323,7 +451,7 @@ export function App() {
             setTabs((prev) =>
               prev
                 .map((t) => (t.id === fromId ? { ...t, scrollTop: sc } : t))
-                .concat([{ id, path: null, stale: false, scrollTop: 0 }]),
+                .concat([blankTab(id)]),
             );
             setActiveTabId(id);
           });
@@ -365,7 +493,7 @@ export function App() {
       }
 
       const active = getActiveTab();
-      if (active?.path) {
+      if (active?.document) {
         const fromId = activeTabIdRef.current;
         const sc = scrollContainerRef.current?.scrollTop ?? 0;
         const id = newTabId();
@@ -374,7 +502,7 @@ export function App() {
           setTabs((prev) =>
             prev
               .map((t) => (t.id === fromId ? { ...t, scrollTop: sc } : t))
-              .concat([{ id, path: null, stale: false, scrollTop: 0 }]),
+              .concat([blankTab(id)]),
           );
           setActiveTabId(id);
         });
@@ -396,7 +524,7 @@ export function App() {
         setTabs((prev) =>
           prev
             .map((t) => (t.id === fromId ? { ...t, scrollTop: sc } : t))
-            .concat([{ id, path: null, stale: false, scrollTop: 0 }]),
+            .concat([blankTab(id)]),
         );
         setActiveTabId(id);
       });
@@ -447,7 +575,7 @@ export function App() {
       setTabs((prev) =>
         prev
           .map((t) => (t.id === fromId ? { ...t, scrollTop: sc } : t))
-          .concat([{ id, path: null, stale: false, scrollTop: 0 }]),
+          .concat([blankTab(id)]),
       );
       setActiveTabId(id);
     });
@@ -474,12 +602,20 @@ export function App() {
   const closeTab = useCallback(
     (tabId: string) => {
       const prev = tabsRef.current;
+      const closing = prev.find((t) => t.id === tabId);
+      if (!closing) return;
+      if (closing.dirty) {
+        const discard = window.confirm(
+          `Discard unsaved changes to "${documentName(closing)}"?`,
+        );
+        if (!discard) return;
+      }
       if (prev.length <= 1) {
+        skipUnloadPromptRef.current = true;
         window.close();
         return;
       }
       const idx = prev.findIndex((t) => t.id === tabId);
-      if (idx < 0) return;
       tabContentCacheRef.current.delete(tabId);
       const closingActive = activeTabIdRef.current === tabId;
       const newTabs = prev.filter((t) => t.id !== tabId);
@@ -514,6 +650,154 @@ export function App() {
   const closeActiveTabOrWindow = useCallback(() => {
     closeTab(activeTabIdRef.current);
   }, [closeTab]);
+
+  const handleEditorOutline = useCallback(
+    (tabId: string, entries: TocEntry[]) => {
+      if (activeTabIdRef.current !== tabId) return;
+      const tab = tabsRef.current.find((t) => t.id === tabId);
+      if (!tab?.editing) return;
+      setTocEntries((prev) => (sameTocEntries(prev, entries) ? prev : entries));
+    },
+    [],
+  );
+
+  const handleEditorMarkdown = useCallback((tabId: string, markdown: string) => {
+    const cache = tabContentCacheRef.current.get(tabId);
+    if (!cache) return;
+    cache.body = markdown;
+    if (!cache.hydrated) {
+      cache.savedBody = markdown;
+      cache.hydrated = true;
+      return;
+    }
+    const dirty = markdown !== cache.savedBody;
+    const tab = tabsRef.current.find((t) => t.id === tabId);
+    if (!tab || tab.dirty === dirty) return;
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tabId ? { ...t, dirty } : t)),
+    );
+  }, []);
+
+  const saveActiveTab = useCallback(
+    async (saveAs: boolean): Promise<boolean> => {
+      if (saveLockRef.current) return false;
+      const tab = getActiveTab();
+      if (!tab?.document) return false;
+      const cache = tabContentCacheRef.current.get(tab.id);
+      if (!cache) return false;
+      if (!saveAs && tab.path && !tab.dirty) return true;
+
+      saveLockRef.current = true;
+      try {
+        let target = saveAs ? null : tab.path;
+        if (!target) {
+          const suggested = tab.path ?? "Untitled.md";
+          const picked = await window.markedly.saveDialog(suggested);
+          if (!picked) return false;
+          target = picked;
+        }
+        const content = composeMarkdown(cache.frontmatterRaw, cache.body);
+        const result = await window.markedly.writeFile(target, content);
+        if (!result.ok) {
+          setStatusText(result.error);
+          return false;
+        }
+        cache.savedBody = cache.body;
+        cache.html = buildPreviewHtml(cache.metadataHtml, cache.body);
+        cache.path = result.path;
+        cache.dirUrl = result.dirUrl;
+        cache.hydrated = true;
+        if (activeTabIdRef.current === tab.id) {
+          setBaseHref(result.dirUrl);
+          setMarkdownHtml(cache.html);
+          setStatusText(result.path);
+          setShowWelcome(false);
+        }
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === tab.id
+              ? {
+                  ...t,
+                  path: result.path,
+                  dirty: false,
+                  stale: false,
+                  document: true,
+                }
+              : t,
+          ),
+        );
+        return true;
+      } finally {
+        saveLockRef.current = false;
+      }
+    },
+    [getActiveTab, setBaseHref],
+  );
+
+  const beginEditing = useCallback(() => {
+    const tab = getActiveTab();
+    if (!tab?.document || tab.editing) return;
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tab.id ? { ...t, editing: true } : t)),
+    );
+  }, [getActiveTab]);
+
+  const finishEditing = useCallback(async () => {
+    const tab = getActiveTab();
+    if (!tab?.document || !tab.editing) return;
+    const saved = await saveActiveTab(false);
+    if (!saved) return;
+    const cache = tabContentCacheRef.current.get(tab.id);
+    if (cache && activeTabIdRef.current === tab.id) {
+      setMarkdownHtml(cache.html);
+    }
+    setTabs((prev) =>
+      prev.map((t) => (t.id === tab.id ? { ...t, editing: false } : t)),
+    );
+  }, [getActiveTab, saveActiveTab]);
+
+  const newDocument = useCallback(() => {
+    const active = getActiveTab();
+    if (active && !active.document) {
+      tabContentCacheRef.current.set(active.id, emptyDocumentCache());
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === active.id
+            ? {
+                ...t,
+                path: null,
+                dirty: false,
+                stale: false,
+                document: true,
+                editing: true,
+              }
+            : t,
+        ),
+      );
+      setShowWelcome(false);
+      setMarkdownHtml("");
+      clearBaseHref();
+      setStatusText("Untitled");
+      return;
+    }
+    const fromId = activeTabIdRef.current;
+    const sc = scrollContainerRef.current?.scrollTop ?? 0;
+    const id = newTabId();
+    tabContentCacheRef.current.set(id, emptyDocumentCache());
+    ignoreScrollRef.current = true;
+    flushSync(() => {
+      setTabs((prev) =>
+        prev
+          .map((t) => (t.id === fromId ? { ...t, scrollTop: sc } : t))
+          .concat([{ ...blankTab(id), document: true, editing: true }]),
+      );
+      setActiveTabId(id);
+    });
+    setShowWelcome(false);
+    setMarkdownHtml("");
+    clearBaseHref();
+    setStatusText("Untitled");
+  }, [clearBaseHref, getActiveTab]);
 
   const handleMarkdownLinkClick = useCallback(
     async (e: MouseEvent) => {
@@ -575,7 +859,11 @@ export function App() {
     injectHighlighterTheme();
     applyColorSchemeToDocument(colorSchemePref);
     syncHighlighterColorScheme(colorSchemePref);
-  }, [colorSchemePref]);
+  }, [colorSchemePref, systemSchemeTick]);
+
+  useLayoutEffect(() => {
+    applyFontPreferenceToDocument(fontPref);
+  }, [fontPref]);
 
   useEffect(() => {
     void window.markedly.setNativeColorScheme(colorSchemePref);
@@ -595,6 +883,11 @@ export function App() {
     }
   }, []);
 
+  const hasOpenDocument = tabs.some((t) => t.document);
+  useEffect(() => {
+    void window.markedly.setHasOpenDocument(hasOpenDocument);
+  }, [hasOpenDocument]);
+
   useEffect(() => {
     if (showWelcome) {
       setSearchQuery("");
@@ -610,7 +903,7 @@ export function App() {
 
   useEffect(() => {
     const t = tabs.find((x) => x.id === activeTabId);
-    if (t?.path) {
+    if (t?.document) {
       document.title = `${tabLabel(t)} — Markedly`;
     } else {
       document.title = "Markedly";
@@ -618,8 +911,9 @@ export function App() {
   }, [tabs, activeTabId]);
 
   useEffect(() => {
+    if (showWelcome || activeEditing) return;
     const root = getActiveMarkdownRoot();
-    if (!root || showWelcome) return;
+    if (!root) return;
     const handler = (e: MouseEvent) => {
       void handleMarkdownLinkClick(e);
     };
@@ -628,6 +922,7 @@ export function App() {
   }, [
     activeTabId,
     getActiveMarkdownRoot,
+    activeEditing,
     handleMarkdownLinkClick,
     markdownHtml,
     showWelcome,
@@ -640,6 +935,15 @@ export function App() {
       window.markedly.onFileChanged((p) => {
         for (const t of tabsRef.current) {
           if (t.path !== p) continue;
+          if (t.dirty) {
+            setTabs((prev) =>
+              prev.map((x) => (x.id === t.id ? { ...x, stale: true } : x)),
+            );
+            if (t.id === activeTabIdRef.current) {
+              setStatusText(`${p} changed on disk. Save will overwrite it.`);
+            }
+            continue;
+          }
           if (t.id === activeTabIdRef.current) void loadPath(p);
           else {
             tabContentCacheRef.current.delete(t.id);
@@ -653,23 +957,31 @@ export function App() {
         if (colorSchemePrefRef.current === "system") {
           setSystemSchemeTick((n) => n + 1);
         }
-        const path = activePathRef.current;
-        if (path) void loadPath(path);
       }),
-      window.markedly.onNewTab(() => addTab()),
+      window.markedly.onNewTab(() => {
+        if (!tabsRef.current.some((t) => t.document)) return;
+        addTab();
+      }),
       window.markedly.onCloseTab(() => closeActiveTabOrWindow()),
       window.markedly.onRequestOpenFolder(() => {
         void pickFolderForFileTree();
       }),
       window.markedly.onFind(() => {
         if (showWelcomeRef.current) return;
-        const root = getActiveMarkdownRoot();
-        if (!root) return;
         const input = searchInputRef.current;
         if (input) {
           input.focus();
           input.select();
         }
+      }),
+      window.markedly.onSave(() => {
+        void saveActiveTab(false);
+      }),
+      window.markedly.onSaveAs(() => {
+        void saveActiveTab(true);
+      }),
+      window.markedly.onNewDocument(() => {
+        newDocument();
       }),
     ];
     return () => {
@@ -678,11 +990,12 @@ export function App() {
   }, [
     addTab,
     closeActiveTabOrWindow,
-    getActiveMarkdownRoot,
     loadPath,
+    newDocument,
     openFilePathSmart,
     openPathInNewTab,
     pickFolderForFileTree,
+    saveActiveTab,
   ]);
 
   useEffect(() => {
@@ -691,8 +1004,6 @@ export function App() {
         (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key === "f";
       if (!findHotkey) return;
       if (showWelcomeRef.current) return;
-      const root = getActiveMarkdownRoot();
-      if (!root) return;
       e.preventDefault();
       const input = searchInputRef.current;
       if (input) {
@@ -702,7 +1013,30 @@ export function App() {
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [getActiveMarkdownRoot]);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || e.altKey) return;
+      if (e.key.toLowerCase() !== "s") return;
+      e.preventDefault();
+      void saveActiveTab(e.shiftKey);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [saveActiveTab]);
+
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (skipUnloadPromptRef.current) return;
+      if (!tabsRef.current.some((t) => t.dirty)) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
 
   useEffect(() => {
     const onDragOver = (e: DragEvent) => {
@@ -852,7 +1186,12 @@ export function App() {
   );
 
   useLayoutEffect(() => {
-    if (showWelcome || !markdownHtml.trim()) {
+    if (showWelcome) {
+      setTocEntries([]);
+      return;
+    }
+    if (activeEditing) return;
+    if (!markdownHtml.trim()) {
       setTocEntries([]);
       return;
     }
@@ -868,7 +1207,13 @@ export function App() {
         text: node.textContent?.trim() ?? "",
       })),
     );
-  }, [activeTabId, getActiveMarkdownRoot, markdownHtml, showWelcome]);
+  }, [
+    activeEditing,
+    activeTabId,
+    getActiveMarkdownRoot,
+    markdownHtml,
+    showWelcome,
+  ]);
 
   const activateTocEntry = useCallback(
     (index: number) => {
@@ -904,7 +1249,7 @@ export function App() {
   useLayoutEffect(() => {
     const sc = scrollContainerRef.current;
     const root = getActiveMarkdownRoot();
-    if (showWelcome || !root || !sc) {
+    if (showWelcome || activeEditing || !root || !sc) {
       clearFindHighlights();
       setFindMatchTotal(0);
       return () => {
@@ -943,6 +1288,7 @@ export function App() {
       clearFindHighlights();
     };
   }, [
+    activeEditing,
     activeTabId,
     getActiveMarkdownRoot,
     markdownHtml,
@@ -957,16 +1303,22 @@ export function App() {
       <header className={appStyles.titlebar}>
         <div className={appStyles.titlebarRow}>
           <div className={appStyles.titlebarCluster}>
-            <button
-              type="button"
-              className={appStyles.titlebarIconButton}
-              onClick={toggleFilePanel}
-              title={filePanelExpanded ? "Hide file tree" : "Show file tree"}
-              aria-expanded={filePanelExpanded}
-              aria-controls="file-tree-panel"
+            <Tooltip
+              content={filePanelExpanded ? "Hide file tree" : "Show file tree"}
             >
-              <SidebarLeftIcon width={16} height={16} aria-hidden />
-            </button>
+              <button
+                type="button"
+                className={appStyles.titlebarIconButton}
+                onClick={toggleFilePanel}
+                aria-label={
+                  filePanelExpanded ? "Hide file tree" : "Show file tree"
+                }
+                aria-expanded={filePanelExpanded}
+                aria-controls="file-tree-panel"
+              >
+                <SidebarLeftIcon width={16} height={16} aria-hidden />
+              </button>
+            </Tooltip>
             <div
               className={
                 showWelcome
@@ -975,20 +1327,21 @@ export function App() {
               }
             >
               {showWelcome ? (
-                <span
-                  className={appStyles.titlebarSearchIconOnly}
-                  role="img"
-                  aria-label="Find: open a document to search"
-                  title="Open a document to search"
-                >
-                  <Search
-                    width={16}
-                    height={16}
-                    strokeWidth={2}
-                    className={appStyles.titlebarSearchIcon}
-                    aria-hidden
-                  />
-                </span>
+                <Tooltip content="Open a document to search">
+                  <span
+                    className={appStyles.titlebarSearchIconOnly}
+                    role="img"
+                    aria-label="Find: open a document to search"
+                  >
+                    <Search
+                      width={16}
+                      height={16}
+                      strokeWidth={2}
+                      className={appStyles.titlebarSearchIcon}
+                      aria-hidden
+                    />
+                  </span>
+                </Tooltip>
               ) : (
                 <div className={appStyles.titlebarSearchRow}>
                   <div className={appStyles.titlebarSearchField} role="search">
@@ -1003,52 +1356,54 @@ export function App() {
                         className={appStyles.titlebarSearchInputIcon}
                       />
                     </span>
-                    <input
-                      ref={searchInputRef}
-                      type="text"
-                      className={appStyles.titlebarSearchInput}
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setSearchMatchIndex(0);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape") {
-                          setSearchQuery("");
-                          e.currentTarget.blur();
-                          return;
-                        }
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          bumpSearchMatch(e.shiftKey ? -1 : 1);
-                        }
-                      }}
-                      placeholder="Find…"
-                      title="Find in document · Enter: next match · Shift+Enter: previous match"
-                      aria-label="Find in document"
-                      autoCapitalize="off"
-                      autoCorrect="off"
-                      spellCheck={false}
-                    />
-                    {searchQuery !== "" ? (
-                      <button
-                        type="button"
-                        className={appStyles.titlebarSearchClear}
-                        aria-label="Clear search"
-                        title="Clear search"
-                        onClick={() => {
-                          setSearchQuery("");
+                    <Tooltip content="Find in document · Enter: next match · Shift+Enter: previous match">
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        className={appStyles.titlebarSearchInput}
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
                           setSearchMatchIndex(0);
-                          searchInputRef.current?.focus();
                         }}
-                      >
-                        <Xmark
-                          width={16}
-                          height={16}
-                          strokeWidth={2}
-                          aria-hidden
-                        />
-                      </button>
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") {
+                            setSearchQuery("");
+                            e.currentTarget.blur();
+                            return;
+                          }
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            bumpSearchMatch(e.shiftKey ? -1 : 1);
+                          }
+                        }}
+                        placeholder="Find…"
+                        aria-label="Find in document"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                      />
+                    </Tooltip>
+                    {searchQuery !== "" ? (
+                      <Tooltip content="Clear search">
+                        <button
+                          type="button"
+                          className={appStyles.titlebarSearchClear}
+                          aria-label="Clear search"
+                          onClick={() => {
+                            setSearchQuery("");
+                            setSearchMatchIndex(0);
+                            searchInputRef.current?.focus();
+                          }}
+                        >
+                          <Xmark
+                            width={16}
+                            height={16}
+                            strokeWidth={2}
+                            aria-hidden
+                          />
+                        </button>
+                      </Tooltip>
                     ) : null}
                   </div>
                   {searchQuery.trim() !== "" ? (
@@ -1064,43 +1419,100 @@ export function App() {
           </div>
           <div className={appStyles.titlebarFlexSpacer} aria-hidden />
           <div className={appStyles.titlebarCluster}>
-            <button
-              type="button"
-              className={appStyles.titlebarIconButton}
-              onClick={cycleColorScheme}
-              title={
-                colorSchemePref === "system"
-                  ? "Appearance: System (follows OS). Click to use light."
-                  : colorSchemePref === "light"
-                    ? "Appearance: Light. Click to use dark."
-                    : "Appearance: Dark. Click to follow system."
-              }
-              aria-label={
-                colorSchemePref === "system"
-                  ? "Color scheme: system. Activate to switch to light."
-                  : colorSchemePref === "light"
-                    ? "Color scheme: light. Activate to switch to dark."
-                    : "Color scheme: dark. Activate to switch to system."
-              }
+            {activeTab?.document ? (
+              <Tooltip content={activeEditing ? "Save and preview" : "Edit"}>
+                <button
+                  type="button"
+                  className={appStyles.titlebarIconButton}
+                  onClick={() => {
+                    if (activeEditing) void finishEditing();
+                    else beginEditing();
+                  }}
+                  aria-label={activeEditing ? "Save and preview" : "Edit"}
+                  aria-pressed={activeEditing}
+                >
+                  {activeEditing ? (
+                    <Check width={16} height={16} strokeWidth={2} aria-hidden />
+                  ) : (
+                    <EditPencil
+                      width={16}
+                      height={16}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                  )}
+                </button>
+              </Tooltip>
+            ) : null}
+            <Tooltip content="Toggle font">
+              <button
+                type="button"
+                className={appStyles.titlebarIconButton}
+                onClick={toggleFont}
+                aria-label={
+                  fontPref === "sans"
+                    ? "Toggle font. Current: Sans. Click to switch to serif."
+                    : "Toggle font. Current: Serif. Click to switch to sans."
+                }
+              >
+                {fontPref === "sans" ? (
+                  <TextSansIcon width={16} height={16} aria-hidden />
+                ) : (
+                  <TextSerifIcon width={16} height={16} aria-hidden />
+                )}
+              </button>
+            </Tooltip>
+            <Tooltip content="Toggle theme">
+              <button
+                type="button"
+                className={appStyles.titlebarIconButton}
+                onClick={cycleColorScheme}
+                aria-label={
+                  colorSchemePref === "system"
+                    ? "Toggle theme. Current: System. Click to switch to light."
+                    : colorSchemePref === "light"
+                      ? "Toggle theme. Current: Light. Click to switch to dark."
+                      : "Toggle theme. Current: Dark. Click to switch to system."
+                }
+              >
+                {colorSchemePref === "system" ? (
+                  <ModernTv
+                    width={16}
+                    height={16}
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                ) : colorSchemePref === "light" ? (
+                  <SunLight
+                    width={16}
+                    height={16}
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                ) : (
+                  <HalfMoon
+                    width={16}
+                    height={16}
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                )}
+              </button>
+            </Tooltip>
+            <Tooltip
+              content={tocPanelExpanded ? "Hide outline" : "Show outline"}
             >
-              {colorSchemePref === "system" ? (
-                <ModernTv width={16} height={16} strokeWidth={2} aria-hidden />
-              ) : colorSchemePref === "light" ? (
-                <SunLight width={16} height={16} strokeWidth={2} aria-hidden />
-              ) : (
-                <HalfMoon width={16} height={16} strokeWidth={2} aria-hidden />
-              )}
-            </button>
-            <button
-              type="button"
-              className={appStyles.titlebarIconButton}
-              onClick={toggleTocPanel}
-              title={tocPanelExpanded ? "Hide outline" : "Show outline"}
-              aria-expanded={tocPanelExpanded}
-              aria-controls="toc-panel"
-            >
-              <SidebarRightIcon width={16} height={16} aria-hidden />
-            </button>
+              <button
+                type="button"
+                className={appStyles.titlebarIconButton}
+                onClick={toggleTocPanel}
+                aria-label={tocPanelExpanded ? "Hide outline" : "Show outline"}
+                aria-expanded={tocPanelExpanded}
+                aria-controls="toc-panel"
+              >
+                <SidebarRightIcon width={16} height={16} aria-hidden />
+              </button>
+            </Tooltip>
           </div>
         </div>
       </header>
@@ -1146,15 +1558,17 @@ export function App() {
           <div
             className={`${appStyles.mainColumn} ${filePanelExpanded ? appStyles.mainColumnLeftHandleOverlap : ""} ${tocPanelExpanded ? appStyles.mainColumnRightHandleOverlap : ""}`}
           >
-            {/* Tabs */}
-            <TabStrip
-              tabs={tabStripTabs}
-              activeTabId={activeTabId}
-              onSelect={activateTab}
-              onClose={closeTab}
-              onReorderTabIds={reorderTabsByIds}
-              onNew={addTab}
-            />
+            {/* Tabs — only once a file or untitled document is open */}
+            {tabs.some((t) => t.document) ? (
+              <TabStrip
+                tabs={tabStripTabs}
+                activeTabId={activeTabId}
+                onSelect={activateTab}
+                onClose={closeTab}
+                onReorderTabIds={reorderTabsByIds}
+                onNew={addTab}
+              />
+            ) : null}
 
             {/* Body */}
             <div className={appStyles.mainColumnStack}>
@@ -1167,19 +1581,20 @@ export function App() {
                   className={`${appStyles.main} ${showWelcome ? appStyles.mainEmpty : ""}`}
                   tabIndex={-1}
                 >
-                  {showWelcome ? <Welcome onOpenFile={onOpenDialog} /> : null}
-                  {tabs.some((t) => {
-                    const c = tabContentCacheRef.current.get(t.id);
-                    return Boolean(t.path && c && c.path === t.path);
-                  }) ? (
+                  {showWelcome ? (
+                    <Welcome
+                      onOpenFile={onOpenDialog}
+                      onNewDocument={newDocument}
+                      reserveTabStripSpace={!tabs.some((t) => t.document)}
+                    />
+                  ) : null}
+                  {tabs.some((t) => tabContentCacheRef.current.has(t.id)) ? (
                     <div
                       className={`${appStyles.markdownPaneShell} ${showWelcome ? appStyles.markdownPaneShellHiddenWhileWelcome : ""}`}
                     >
                       {tabs.map((t) => {
                         const cached = tabContentCacheRef.current.get(t.id);
-                        if (!t.path || !cached || cached.path !== t.path) {
-                          return null;
-                        }
+                        if (!cached) return null;
                         const isActive = t.id === activeTabId && !showWelcome;
                         return (
                           <div
@@ -1190,23 +1605,44 @@ export function App() {
                                 : appStyles.markdownPaneInactive
                             }
                           >
-                            <MarkdownBody
-                              ref={(handle) => {
-                                if (handle) {
-                                  markdownBodyHandlesRef.current.set(
-                                    t.id,
-                                    handle,
-                                  );
-                                } else {
-                                  markdownBodyHandlesRef.current.delete(t.id);
-                                }
-                              }}
-                              html={cached.html}
-                              isActive={isActive}
-                              mermaidLayoutNamespace={t.id}
-                              resolvedColorScheme={resolvedColorScheme}
-                              onDiagramError={onDiagramError}
-                            />
+                            {t.editing ? (
+                              <MarkdownEditor
+                                key={`${t.id}:${cached.generation}`}
+                                initialMarkdown={cached.body}
+                                metadataHtml={cached.metadataHtml}
+                                isActive={isActive}
+                                onChange={(markdown) => {
+                                  handleEditorMarkdown(t.id, markdown);
+                                }}
+                                onOutline={(entries) => {
+                                  handleEditorOutline(t.id, entries);
+                                }}
+                                onRoot={(el) => {
+                                  if (el) editorRootsRef.current.set(t.id, el);
+                                  else editorRootsRef.current.delete(t.id);
+                                }}
+                              />
+                            ) : (
+                              <MarkdownBody
+                                ref={(handle) => {
+                                  if (handle) {
+                                    markdownBodyHandlesRef.current.set(
+                                      t.id,
+                                      handle,
+                                    );
+                                  } else {
+                                    markdownBodyHandlesRef.current.delete(
+                                      t.id,
+                                    );
+                                  }
+                                }}
+                                html={cached.html}
+                                isActive={isActive}
+                                mermaidLayoutNamespace={t.id}
+                                resolvedColorScheme={resolvedColorScheme}
+                                onDiagramError={onDiagramError}
+                              />
+                            )}
                           </div>
                         );
                       })}

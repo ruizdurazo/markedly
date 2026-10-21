@@ -1,0 +1,169 @@
+.content {
+  z-index: 40;
+  min-width: 224px;
+  padding: 4px;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px var(--backdrop);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 16px;
+  user-select: none;
+  outline: none;
+  cursor: default;
+
+  &[data-highlighted] {
+    background: var(--very-muted);
+  }
+
+  &[data-disabled] {
+    color: var(--muted);
+  }
+}
+
+.check {
+  width: 16px;
+  flex: none;
+  text-align: center;
+  font-size: 12px;
+}
+
+.icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.label {
+  flex: 1;
+}
+
+.shortcut {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border);
+}
+
+.linkLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.linkDialog {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px var(--backdrop);
+}
+
+.linkInput {
+  width: 280px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
+  line-height: 16px;
+
+  &:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+}
+
+.linkButton {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--very-muted);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
+  line-height: 16px;
+  cursor: default;
+
+  &:hover {
+    background: var(--border);
+  }
+}
+
+.linkCaret {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 320px;
+  padding: 4px;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px var(--backdrop);
+}
+
+.linkCaretInput {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
+  line-height: 16px;
+
+  &:focus {
+    outline: none;
+    background: var(--very-muted);
+  }
+}
+
+.linkCaretRemove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+
+  &:hover {
+    background: var(--very-muted);
+    color: var(--foreground);
+  }
+}

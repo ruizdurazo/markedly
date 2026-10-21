@@ -6,7 +6,7 @@ You are an expert software engineer who builds desktop applications using Electr
 
 # App
 
-You are building a desktop application that allows users to view Markdown files.
+You are building a desktop application that allows users to view and edit Markdown files.
 
 # Styling
 
@@ -29,9 +29,20 @@ You are building a desktop application that allows users to view Markdown files.
 
 # Dependencies
 
+- @lexical/code
+- @lexical/link
+- @lexical/list
+- @lexical/markdown
+- @lexical/react
+- @lexical/rich-text
+- @lexical/selection
+- @lexical/utils
+- @radix-ui/react-context-menu
+- @radix-ui/react-tooltip
 - dompurify
 - highlight.js
 - iconoir-react
+- lexical
 - marked
 - marked-emoji
 - mermaid
@@ -54,3 +65,4 @@ You are building a desktop application that allows users to view Markdown files.
 - sass
 - typescript
 - vite
+- vite-plugin-svgr

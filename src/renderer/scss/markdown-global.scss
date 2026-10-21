@@ -3,6 +3,7 @@
   flex: 1;
   // min-height: 100%;
   padding-bottom: 64px;
+  font-family: var(--font-serif);
   // -webkit-app-region: no-drag;
 
   .doc-metadata {
@@ -104,11 +105,66 @@
 
   li {
     margin: 6px 0;
+  }
 
-    > input[type="checkbox"] {
-      margin-right: 8px;
-      pointer-events: none;
+  // Preview emits a disabled native checkbox. The editor has no input and
+  // paints the same box on .md-task / .md-task-checked. Keep these in lockstep:
+  // Lexical's checklist toggle measures the ::before width.
+  li:has(> input[type="checkbox"]),
+  li:has(> p > input[type="checkbox"]),
+  .md-task,
+  .md-task-checked {
+    position: relative;
+    margin-left: -24px;
+    padding-left: 24px;
+    list-style: none;
+
+    &::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 2px;
+      box-sizing: border-box;
+      width: 16px;
+      height: 16px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--background);
     }
+  }
+
+  li:has(> input[type="checkbox"]:checked),
+  li:has(> p > input[type="checkbox"]:checked),
+  .md-task-checked {
+    &::before {
+      background: var(--foreground);
+      border-color: var(--foreground);
+    }
+
+    &::after {
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: 5px;
+      width: 4px;
+      height: 8px;
+      border: solid var(--background);
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+  }
+
+  li:has(> input[type="checkbox"]) > input[type="checkbox"],
+  li:has(> p > input[type="checkbox"]) > p > input[type="checkbox"] {
+    position: absolute;
+    left: 0;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    opacity: 0;
+    pointer-events: none;
+    appearance: none;
   }
 
   blockquote {
@@ -124,6 +180,29 @@
     &:hover {
       text-decoration: underline;
     }
+  }
+
+  strong {
+    font-weight: 600;
+  }
+
+  em {
+    font-style: italic;
+  }
+
+  strong em,
+  em strong {
+    font-weight: 600;
+    font-style: italic;
+  }
+
+  u {
+    text-decoration: underline;
+  }
+
+  s,
+  del {
+    text-decoration: line-through;
   }
 
   code {

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import styles from "./TabStrip.module.scss";
+import { Tooltip } from "./Tooltip";
 
 export type TabStripTab = {
   id: string;
@@ -410,19 +411,20 @@ export function TabStrip({
               onPointerDown={(e) => onTabPointerDown(e, tab, index)}
             >
               <div className={styles.tabLabel}>{tab.label}</div>
-              <button
-                type="button"
-                className={styles.tabClose}
-                title="Close tab"
-                aria-label="Close tab"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClose(tab.id);
-                }}
-              >
-                ×
-              </button>
+              <Tooltip content="Close tab">
+                <button
+                  type="button"
+                  className={styles.tabClose}
+                  aria-label="Close tab"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClose(tab.id);
+                  }}
+                >
+                  ×
+                </button>
+              </Tooltip>
             </div>
           );
         })}
@@ -453,15 +455,16 @@ export function TabStrip({
       <div
         className={`${styles.tabNewColumn}${horizontalScrollbarVisible ? ` ${styles.tabNewScrollbarVisible}` : ""}`}
       >
-        <button
-          type="button"
-          className={styles.tabNew}
-          title="New tab"
-          aria-label="New tab"
-          onClick={onNew}
-        >
-          +
-        </button>
+        <Tooltip content="New tab">
+          <button
+            type="button"
+            className={styles.tabNew}
+            aria-label="New tab"
+            onClick={onNew}
+          >
+            +
+          </button>
+        </Tooltip>
         {horizontalScrollbarVisible ? (
           <div className={styles.tabNewScrollbarSpacer} aria-hidden />
         ) : null}

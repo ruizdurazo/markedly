@@ -8,7 +8,7 @@ import {
   shell,
 } from "electron";
 import { existsSync, watch } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type {
@@ -28,9 +28,25 @@ type WatchEntry = {
 };
 
 const fileWatchers = new Map<string, WatchEntry>();
+/** Paths we just wrote, so the watcher does not reload the editor over that save. */
+const ignoreFileChangesUntil = new Map<string, number>();
+
+function noteOwnWrite(filePath: string) {
+  ignoreFileChangesUntil.set(filePath, Date.now() + 1000);
+}
+
+function isOwnWriteEcho(filePath: string): boolean {
+  const until = ignoreFileChangesUntil.get(filePath);
+  if (until == null) return false;
+  if (Date.now() <= until) return true;
+  ignoreFileChangesUntil.delete(filePath);
+  return false;
+}
 let pendingOpenPath: string | null = null;
 /** First BrowserWindow created in this session; launch argv is delivered only to this window once. */
 let firstCreatedWindowId: number | null = null;
+/** Whether each window has at least one open file or untitled document. */
+const windowHasOpenDocument = new Map<number, boolean>();
 let argvLaunchHandled = false;
 
 function extractMdFromArgv(argv: string[]): string | null {
@@ -195,9 +211,11 @@ function ensureWatching(filePath: string) {
   try {
     const entry: WatchEntry = {
       handle: watch(filePath, { persistent: false }, () => {
+        if (isOwnWriteEcho(filePath)) return;
         if (entry.debounce != null) clearTimeout(entry.debounce);
         entry.debounce = setTimeout(() => {
           entry.debounce = null;
+          if (isOwnWriteEcho(filePath)) return;
           notifyFileChanged(filePath);
         }, 150);
       }),
@@ -225,7 +243,7 @@ function getTargetWindowForOpen(): BrowserWindow | null {
   return all.length ? all[all.length - 1]! : null;
 }
 
-/** Resolve menu / focus targets to `BrowserWindow` (Electron 34 types use `BaseWindow` for menu callbacks). */
+/** Resolve menu / focus targets to `BrowserWindow` (menu callbacks are typed as `BaseWindow`). */
 function asBrowserWindow(
   win: Electron.BaseWindow | null | undefined,
 ): BrowserWindow | null {
@@ -235,6 +253,24 @@ function asBrowserWindow(
 
 /** Matches `trafficLightPosition` / renderer mac title bar inset; scales with Chromium page zoom. */
 const DARWIN_WINDOW_BUTTON_BASE = { x: 14, y: 14 } as const;
+
+/**
+ * Electron 43+ opens a dialog in Downloads when `defaultPath` is omitted, and
+ * no longer restores the last folder the system remembered. Keep that folder
+ * for the rest of the session.
+ */
+let lastDialogDirectory: string | undefined;
+
+function rememberDialogDirectory(filePath: string, isDirectory = false) {
+  lastDialogDirectory = isDirectory ? filePath : dirname(filePath);
+}
+
+function openDialogOptions(
+  options: Electron.OpenDialogOptions,
+): Electron.OpenDialogOptions {
+  if (!lastDialogDirectory) return options;
+  return { ...options, defaultPath: lastDialogDirectory };
+}
 
 function syncDarwinWindowButtonPositionToPageZoom(win: Electron.BaseWindow) {
   if (process.platform !== "darwin" || win.isDestroyed()) return;
@@ -314,10 +350,15 @@ function createWindow(): BrowserWindow {
   if (firstCreatedWindowId == null) {
     firstCreatedWindowId = win.id;
   }
+  win.on("focus", () => {
+    syncNewTabMenuEnabled();
+  });
   win.on("closed", () => {
+    windowHasOpenDocument.delete(win.id);
     if (win.id === firstCreatedWindowId) {
       firstCreatedWindowId = null;
     }
+    syncNewTabMenuEnabled();
   });
 
   const devEnabled = process.env.VITE_DEV_SERVER === "1" && !app.isPackaged;
@@ -408,6 +449,15 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
+function syncNewTabMenuEnabled() {
+  const item = Menu.getApplicationMenu()?.getMenuItemById("new-tab");
+  if (!item) return;
+  const focused = BrowserWindow.getFocusedWindow();
+  item.enabled = focused
+    ? windowHasOpenDocument.get(focused.id) === true
+    : false;
+}
+
 function buildMenu() {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -435,11 +485,22 @@ function buildMenu() {
           },
         },
         {
+          id: "new-tab",
           label: "New tab",
           accelerator: "CmdOrCtrl+T",
+          enabled: false,
           click: () => {
             const win = getTargetWindowForOpen();
-            win?.webContents.send("md:new-tab");
+            if (!win || windowHasOpenDocument.get(win.id) !== true) return;
+            win.webContents.send("md:new-tab");
+          },
+        },
+        {
+          label: "New document",
+          accelerator: "CmdOrCtrl+Shift+N",
+          click: () => {
+            const win = getTargetWindowForOpen();
+            win?.webContents.send("md:new-document");
           },
         },
         {
@@ -457,16 +518,20 @@ function buildMenu() {
           click: async () => {
             const win = getDialogParentWindow();
             if (!win) return;
-            const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-              properties: ["openFile"],
-              filters: [
-                {
-                  name: "Markdown",
-                  extensions: ["md", "markdown", "mdown", "mkd"],
-                },
-              ],
-            });
+            const { canceled, filePaths } = await dialog.showOpenDialog(
+              win,
+              openDialogOptions({
+                properties: ["openFile"],
+                filters: [
+                  {
+                    name: "Markdown",
+                    extensions: ["md", "markdown", "mdown", "mkd"],
+                  },
+                ],
+              }),
+            );
             if (!canceled && filePaths[0] && !win.isDestroyed()) {
+              rememberDialogDirectory(filePaths[0]);
               win.webContents.send("md:open-path", filePaths[0]);
             }
           },
@@ -477,6 +542,21 @@ function buildMenu() {
           click: () => {
             const win = getTargetWindowForOpen();
             win?.webContents.send("md:request-open-folder");
+          },
+        },
+        { type: "separator" },
+        {
+          label: "Save",
+          accelerator: "CmdOrCtrl+S",
+          click: () => {
+            getTargetWindowForOpen()?.webContents.send("md:save");
+          },
+        },
+        {
+          label: "Save As…",
+          accelerator: "CmdOrCtrl+Shift+S",
+          click: () => {
+            getTargetWindowForOpen()?.webContents.send("md:save-as");
           },
         },
       ],
@@ -603,6 +683,15 @@ if (!gotLock) {
       nativeTheme.themeSource = pref;
     });
 
+    ipcMain.handle("md:set-has-open-document", (event, hasOpen: unknown) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return;
+      windowHasOpenDocument.set(win.id, hasOpen === true);
+      if (BrowserWindow.getFocusedWindow()?.id === win.id) {
+        syncNewTabMenuEnabled();
+      }
+    });
+
     ipcMain.handle("md:new-window", () => {
       void createWindow();
     });
@@ -611,13 +700,17 @@ if (!gotLock) {
       const win =
         BrowserWindow.fromWebContents(event.sender) ?? getDialogParentWindow();
       if (!win) return null;
-      const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-        properties: ["openFile"],
-        filters: [
-          { name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd"] },
-        ],
-      });
+      const { canceled, filePaths } = await dialog.showOpenDialog(
+        win,
+        openDialogOptions({
+          properties: ["openFile"],
+          filters: [
+            { name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd"] },
+          ],
+        }),
+      );
       if (canceled || !filePaths[0]) return null;
+      rememberDialogDirectory(filePaths[0]);
       return filePaths[0];
     });
 
@@ -625,11 +718,16 @@ if (!gotLock) {
       const win =
         BrowserWindow.fromWebContents(event.sender) ?? getDialogParentWindow();
       if (!win) return null;
-      const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-        properties: ["openDirectory", "createDirectory"],
-      });
+      const { canceled, filePaths } = await dialog.showOpenDialog(
+        win,
+        openDialogOptions({
+          properties: ["openDirectory", "createDirectory"],
+        }),
+      );
       if (canceled || !filePaths[0]) return null;
-      return validateDirPath(filePaths[0]);
+      const dir = await validateDirPath(filePaths[0]);
+      if (dir) rememberDialogDirectory(dir, true);
+      return dir;
     });
 
     ipcMain.handle(
@@ -677,6 +775,70 @@ if (!gotLock) {
         const message = err instanceof Error ? err.message : "Read failed";
         return { ok: false as const, error: message };
       }
+    });
+
+    ipcMain.handle("md:write", async (_e, rawPath: unknown, rawContent: unknown) => {
+      if (typeof rawPath !== "string" || typeof rawContent !== "string") {
+        return { ok: false as const, error: "Invalid arguments" };
+      }
+      const p = resolve(rawPath);
+      if (!isMarkdownExtension(p)) {
+        return { ok: false as const, error: "Not a Markdown file" };
+      }
+      try {
+        const parent = await stat(dirname(p));
+        if (!parent.isDirectory()) {
+          return { ok: false as const, error: "Folder not found" };
+        }
+      } catch {
+        return { ok: false as const, error: "Folder not found" };
+      }
+      try {
+        noteOwnWrite(p);
+        await writeFile(p, rawContent, "utf8");
+        ensureWatching(p);
+        if (process.platform === "darwin") {
+          app.addRecentDocument(p);
+        }
+        return {
+          ok: true as const,
+          path: p,
+          dir: dirname(p),
+          dirUrl: dirToFileUrl(dirname(p)),
+          name: basename(p),
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Save failed";
+        return { ok: false as const, error: message };
+      }
+    });
+
+    ipcMain.handle("md:save-dialog", async (event, suggested: unknown) => {
+      const win =
+        BrowserWindow.fromWebContents(event.sender) ?? getDialogParentWindow();
+      if (!win) return null;
+      const suggestedName =
+        typeof suggested === "string" && suggested.trim()
+          ? suggested
+          : "Untitled.md";
+      const defaultPath = suggestedName.includes(sep)
+        ? suggestedName
+        : lastDialogDirectory
+          ? join(lastDialogDirectory, suggestedName)
+          : suggestedName;
+      const { canceled, filePath } = await dialog.showSaveDialog(win, {
+        defaultPath,
+        filters: [
+          {
+            name: "Markdown",
+            extensions: ["md", "markdown", "mdown", "mkd"],
+          },
+        ],
+      });
+      if (canceled || !filePath) return null;
+      const saved = isMarkdownExtension(filePath) ? filePath : `${filePath}.md`;
+      rememberDialogDirectory(saved);
+      return saved;
     });
 
     ipcMain.handle(

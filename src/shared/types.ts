@@ -19,6 +19,19 @@ export type ReadErr = { ok: false; error: string };
 
 export type ReadResult = ReadOk | ReadErr;
 
+export type WriteOk = {
+  ok: true;
+  path: string;
+  dir: string;
+  /** file:// base URL for resolving relative images, trailing slash */
+  dirUrl: string;
+  name: string;
+};
+
+export type WriteErr = { ok: false; error: string };
+
+export type WriteResult = WriteOk | WriteErr;
+
 export type DirTreeDir = {
   type: "dir";
   name: string;

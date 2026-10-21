@@ -1,6 +1,25 @@
 @use "tokens" as *;
 @use "markdown-global" as *;
 
+@font-face {
+  font-family: "ITC Souvenir Std";
+  src: url("../fonts/SouvenirStd-Light.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --font-serif:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui,
+    sans-serif;
+}
+
+:root[data-font="serif"] {
+  --font-serif: Charter, "Times New Roman", serif;
+  // --font-serif: Georgia, "Times New Roman", serif;
+}
+
 *,
 *::before,
 *::after {

@@ -4,6 +4,7 @@ import type {
   ListMarkdownTreeResult,
   ReadResult,
   ResolvedMdLink,
+  WriteResult,
 } from "../shared/types.js";
 
 const api = {
@@ -19,6 +20,12 @@ const api = {
     ) as Promise<ListMarkdownTreeResult>,
   readFile: (path: string) =>
     ipcRenderer.invoke("md:read", path) as Promise<ReadResult>,
+  writeFile: (path: string, content: string) =>
+    ipcRenderer.invoke("md:write", path, content) as Promise<WriteResult>,
+  saveDialog: (suggestedName: string) =>
+    ipcRenderer.invoke("md:save-dialog", suggestedName) as Promise<
+      string | null
+    >,
   normalizeMarkdownPath: (path: string) =>
     ipcRenderer.invoke("md:normalize-path", path) as Promise<string | null>,
   resolveMarkdownLink: (basePath: string, href: string) =>
@@ -55,6 +62,11 @@ const api = {
   },
   setNativeColorScheme: (pref: ColorSchemePreference) =>
     ipcRenderer.invoke("md:set-native-color-scheme", pref) as Promise<void>,
+  setHasOpenDocument: (hasOpenDocument: boolean) =>
+    ipcRenderer.invoke(
+      "md:set-has-open-document",
+      hasOpenDocument,
+    ) as Promise<void>,
   onNewTab: (cb: () => void) => {
     const fn = () => cb();
     ipcRenderer.on("md:new-tab", fn);
@@ -74,6 +86,21 @@ const api = {
     const fn = () => cb();
     ipcRenderer.on("md:find", fn);
     return () => ipcRenderer.removeListener("md:find", fn);
+  },
+  onSave: (cb: () => void) => {
+    const fn = () => cb();
+    ipcRenderer.on("md:save", fn);
+    return () => ipcRenderer.removeListener("md:save", fn);
+  },
+  onSaveAs: (cb: () => void) => {
+    const fn = () => cb();
+    ipcRenderer.on("md:save-as", fn);
+    return () => ipcRenderer.removeListener("md:save-as", fn);
+  },
+  onNewDocument: (cb: () => void) => {
+    const fn = () => cb();
+    ipcRenderer.on("md:new-document", fn);
+    return () => ipcRenderer.removeListener("md:new-document", fn);
   },
 };
 

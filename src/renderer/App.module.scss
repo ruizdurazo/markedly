@@ -93,7 +93,8 @@
 }
 
 :global(body.platform-mac) .titlebarRow {
-  padding-left: 72px;
+  /* 16px traffic lights, 23px pitch, origin x=14 — last button ends at 76. */
+  padding-left: 84px;
 }
 
 .titlebarCluster {

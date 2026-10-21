@@ -3,6 +3,7 @@ import type {
   ListMarkdownTreeResult,
   ReadResult,
   ResolvedMdLink,
+  WriteResult,
 } from "../shared/types.js";
 
 declare global {
@@ -13,6 +14,8 @@ declare global {
       openFolderDialog: () => Promise<string | null>;
       listMarkdownTree: (rootPath: string) => Promise<ListMarkdownTreeResult>;
       readFile: (path: string) => Promise<ReadResult>;
+      writeFile: (path: string, content: string) => Promise<WriteResult>;
+      saveDialog: (suggestedName: string) => Promise<string | null>;
       normalizeMarkdownPath: (path: string) => Promise<string | null>;
       resolveMarkdownLink: (
         basePath: string,
@@ -26,10 +29,14 @@ declare global {
       onFileChanged: (cb: (path: string) => void) => () => void;
       onThemeChanged: (cb: () => void) => () => void;
       setNativeColorScheme: (pref: ColorSchemePreference) => Promise<void>;
+      setHasOpenDocument: (hasOpenDocument: boolean) => Promise<void>;
       onNewTab: (cb: () => void) => () => void;
       onCloseTab: (cb: () => void) => () => void;
       onRequestOpenFolder: (cb: () => void) => () => void;
       onFind: (cb: () => void) => () => void;
+      onSave: (cb: () => void) => () => void;
+      onSaveAs: (cb: () => void) => () => void;
+      onNewDocument: (cb: () => void) => () => void;
     };
   }
 }

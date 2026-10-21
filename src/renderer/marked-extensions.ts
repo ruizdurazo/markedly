@@ -37,7 +37,37 @@ export function firstLineLooksLikeMermaid(text: string): boolean {
   );
 }
 
+const underlineExtension: MarkedExtension = {
+  extensions: [
+    {
+      name: "underline",
+      level: "inline",
+      start(src: string) {
+        const index = src.indexOf("++");
+        return index === -1 ? undefined : index;
+      },
+      tokenizer(src: string) {
+        const match = /^\+\+([^\n]+?)\+\+/.exec(src);
+        if (!match) return;
+        return {
+          type: "underline",
+          raw: match[0],
+          text: match[1],
+          tokens: this.lexer.inlineTokens(match[1]),
+        };
+      },
+      renderer(token) {
+        const inner = token.tokens
+          ? this.parser.parseInline(token.tokens)
+          : escapeHtml(token.text);
+        return `<u>${inner}</u>`;
+      },
+    },
+  ],
+};
+
 export const markedRenderingExtensions: MarkedExtension[] = [
+  underlineExtension,
   markedEmoji({
     emojis: nameToEmoji as Record<string, string>,
     renderer(token: { emoji: string }) {
