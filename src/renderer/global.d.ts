@@ -30,6 +30,8 @@ declare global {
       onThemeChanged: (cb: () => void) => () => void;
       setNativeColorScheme: (pref: ColorSchemePreference) => Promise<void>;
       setHasOpenDocument: (hasOpenDocument: boolean) => Promise<void>;
+      setStatusBarVisible: (visible: boolean) => Promise<void>;
+      onStatusBarVisible: (cb: (visible: boolean) => void) => () => void;
       onNewTab: (cb: () => void) => () => void;
       onCloseTab: (cb: () => void) => () => void;
       onRequestOpenFolder: (cb: () => void) => () => void;

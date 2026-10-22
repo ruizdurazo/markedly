@@ -67,6 +67,13 @@ const api = {
       "md:set-has-open-document",
       hasOpenDocument,
     ) as Promise<void>,
+  setStatusBarVisible: (visible: boolean) =>
+    ipcRenderer.invoke("md:set-status-bar-visible", visible) as Promise<void>,
+  onStatusBarVisible: (cb: (visible: boolean) => void) => {
+    const fn = (_e: Electron.IpcRendererEvent, visible: boolean) => cb(visible);
+    ipcRenderer.on("md:status-bar-visible", fn);
+    return () => ipcRenderer.removeListener("md:status-bar-visible", fn);
+  },
   onNewTab: (cb: () => void) => {
     const fn = () => cb();
     ipcRenderer.on("md:new-tab", fn);

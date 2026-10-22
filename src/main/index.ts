@@ -458,6 +458,19 @@ function syncNewTabMenuEnabled() {
     : false;
 }
 
+function setStatusBarMenuChecked(visible: boolean) {
+  const item = Menu.getApplicationMenu()?.getMenuItemById("show-status-bar");
+  if (!item) return;
+  item.checked = visible;
+}
+
+function broadcastStatusBarVisible(visible: boolean) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    win.webContents.send("md:status-bar-visible", visible);
+  }
+}
+
 function buildMenu() {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -587,6 +600,16 @@ function buildMenu() {
     {
       label: "View",
       submenu: [
+        {
+          id: "show-status-bar",
+          label: "Show Status Bar",
+          type: "checkbox",
+          checked: true,
+          click: (menuItem) => {
+            broadcastStatusBarVisible(menuItem.checked);
+          },
+        },
+        { type: "separator" },
         { role: "reload" },
         { role: "forceReload" },
         { type: "separator" },
@@ -690,6 +713,10 @@ if (!gotLock) {
       if (BrowserWindow.getFocusedWindow()?.id === win.id) {
         syncNewTabMenuEnabled();
       }
+    });
+
+    ipcMain.handle("md:set-status-bar-visible", (_event, visible: unknown) => {
+      setStatusBarMenuChecked(visible !== false);
     });
 
     ipcMain.handle("md:new-window", () => {

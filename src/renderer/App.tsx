@@ -64,6 +64,10 @@ import {
   writeStoredFontPreference,
   type FontPreference,
 } from "./font-preference";
+import {
+  readStoredStatusBarVisible,
+  writeStoredStatusBarVisible,
+} from "./status-bar-preference";
 
 type Tab = {
   id: string;
@@ -135,6 +139,15 @@ function tabLabel(tab: Tab): string {
   return tab.dirty ? `${name} •` : name;
 }
 
+function countWords(text: string): number {
+  const matches = text.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu);
+  return matches?.length ?? 0;
+}
+
+function formatWordCount(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? "word" : "words"}`;
+}
+
 function buildPreviewHtml(metadataHtml: string, body: string): string {
   return metadataHtml + parseMarkdown(body);
 }
@@ -184,6 +197,8 @@ export function App() {
   const [tabs, setTabs] = useState<Tab[]>([blankTab(initialTabId)]);
   const [activeTabId, setActiveTabId] = useState(initialTabId);
   const [statusText, setStatusText] = useState("");
+  const [wordCountRevision, setWordCountRevision] = useState(0);
+  const statusWordCountRef = useRef(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMatchIndex, setSearchMatchIndex] = useState(0);
   const [findMatchTotal, setFindMatchTotal] = useState(0);
@@ -211,6 +226,9 @@ export function App() {
   );
   const [fontPref, setFontPref] = useState<FontPreference>(() =>
     readStoredFontPreference(),
+  );
+  const [statusBarVisible, setStatusBarVisible] = useState(() =>
+    readStoredStatusBarVisible(),
   );
   const [systemSchemeTick, setSystemSchemeTick] = useState(0);
   const colorSchemePrefRef = useRef(colorSchemePref);
@@ -248,6 +266,12 @@ export function App() {
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeEditing = Boolean(activeTab?.document && activeTab.editing);
+  const statusWordCount = useMemo(() => {
+    if (!activeTab?.path) return 0;
+    const body = tabContentCacheRef.current.get(activeTab.id)?.body ?? "";
+    return countWords(body);
+  }, [activeTab, wordCountRevision]);
+  statusWordCountRef.current = statusWordCount;
   const activePathRef = useRef<string | null>(null);
   activePathRef.current = activeTab?.path ?? null;
 
@@ -665,6 +689,14 @@ export function App() {
     const cache = tabContentCacheRef.current.get(tabId);
     if (!cache) return;
     cache.body = markdown;
+    if (tabId === activeTabIdRef.current) {
+      const tab = tabsRef.current.find((t) => t.id === tabId);
+      const next = tab?.path ? countWords(markdown) : 0;
+      if (next !== statusWordCountRef.current) {
+        statusWordCountRef.current = next;
+        setWordCountRevision((n) => n + 1);
+      }
+    }
     if (!cache.hydrated) {
       cache.savedBody = markdown;
       cache.hydrated = true;
@@ -870,6 +902,11 @@ export function App() {
   }, [colorSchemePref]);
 
   useEffect(() => {
+    writeStoredStatusBarVisible(statusBarVisible);
+    void window.markedly.setStatusBarVisible(statusBarVisible);
+  }, [statusBarVisible]);
+
+  useEffect(() => {
     if (colorSchemePref !== "system") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => setSystemSchemeTick((n) => n + 1);
@@ -982,6 +1019,9 @@ export function App() {
       }),
       window.markedly.onNewDocument(() => {
         newDocument();
+      }),
+      window.markedly.onStatusBarVisible((visible) => {
+        setStatusBarVisible(visible);
       }),
     ];
     return () => {
@@ -1652,9 +1692,16 @@ export function App() {
               </div>
 
               {/* Status bar */}
-              {!showWelcome ? (
-                <footer className={statusStyles.status} aria-live="polite">
-                  {statusText}
+              {!showWelcome && statusBarVisible ? (
+                <footer className={statusStyles.status}>
+                  <span className={statusStyles.path} aria-live="polite">
+                    {statusText}
+                  </span>
+                  {statusWordCount > 0 ? (
+                    <span className={statusStyles.wordCount}>
+                      {formatWordCount(statusWordCount)}
+                    </span>
+                  ) : null}
                 </footer>
               ) : null}
             </div>
