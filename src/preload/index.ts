@@ -3,6 +3,7 @@ import type {
   ColorSchemePreference,
   ListMarkdownTreeResult,
   ReadResult,
+  RenameResult,
   ResolvedMdLink,
   WriteResult,
 } from "../shared/types.js";
@@ -22,6 +23,8 @@ const api = {
     ipcRenderer.invoke("md:read", path) as Promise<ReadResult>,
   writeFile: (path: string, content: string) =>
     ipcRenderer.invoke("md:write", path, content) as Promise<WriteResult>,
+  renameFile: (path: string, name: string) =>
+    ipcRenderer.invoke("md:rename", path, name) as Promise<RenameResult>,
   saveDialog: (suggestedName: string) =>
     ipcRenderer.invoke("md:save-dialog", suggestedName) as Promise<
       string | null
@@ -54,6 +57,16 @@ const api = {
     const fn = (_e: Electron.IpcRendererEvent, p: string) => cb(p);
     ipcRenderer.on("md:file-changed", fn);
     return () => ipcRenderer.removeListener("md:file-changed", fn);
+  },
+  onFileRenamed: (cb: (from: string, path: string, dirUrl: string) => void) => {
+    const fn = (
+      _e: Electron.IpcRendererEvent,
+      from: string,
+      path: string,
+      dirUrl: string,
+    ) => cb(from, path, dirUrl);
+    ipcRenderer.on("md:file-renamed", fn);
+    return () => ipcRenderer.removeListener("md:file-renamed", fn);
   },
   onThemeChanged: (cb: () => void) => {
     const fn = () => cb();

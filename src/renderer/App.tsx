@@ -163,6 +163,13 @@ function clampPx(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function isPathInsideFolder(root: string, filePath: string): boolean {
+  const sep = root.includes("\\") && !root.includes("/") ? "\\" : "/";
+  const prefix =
+    root.endsWith("/") || root.endsWith("\\") ? root : `${root}${sep}`;
+  return filePath === root || filePath.startsWith(prefix);
+}
+
 function pathsFromDataTransfer(dt: DataTransfer | null): string[] {
   if (!dt?.files?.length) return [];
   const paths: string[] = [];
@@ -274,6 +281,11 @@ export function App() {
   statusWordCountRef.current = statusWordCount;
   const activePathRef = useRef<string | null>(null);
   activePathRef.current = activeTab?.path ?? null;
+  const rootFolderPathRef = useRef(rootFolderPath);
+  rootFolderPathRef.current = rootFolderPath;
+  const applyRenamedPathRef = useRef<
+    (from: string, path: string, dirUrl: string) => void
+  >(() => {});
 
   const setBaseHref = useCallback((dirUrl: string) => {
     if (!baseElRef.current) {
@@ -582,6 +594,70 @@ export function App() {
     if (!rootFolderPath) return;
     await refreshFileTree(rootFolderPath);
   }, [rootFolderPath, refreshFileTree]);
+
+  const applyRenamedPath = useCallback(
+    (from: string, path: string, dirUrl: string) => {
+      if (!from || from === path) return;
+      for (const cache of tabContentCacheRef.current.values()) {
+        if (cache.path !== from) continue;
+        cache.path = path;
+        cache.dirUrl = dirUrl;
+      }
+      const active = tabsRef.current.find(
+        (t) => t.id === activeTabIdRef.current,
+      );
+      const activeMoved = active?.path === from;
+      if (tabsRef.current.some((t) => t.path === from)) {
+        setTabs((prev) =>
+          prev.map((t) => (t.path === from ? { ...t, path } : t)),
+        );
+      }
+      if (activeMoved) {
+        setBaseHref(dirUrl);
+        setStatusText(
+          active?.stale
+            ? `${path} changed on disk. Save will overwrite it.`
+            : path,
+        );
+      }
+      const root = rootFolderPathRef.current;
+      if (
+        root &&
+        (isPathInsideFolder(root, from) || isPathInsideFolder(root, path))
+      ) {
+        void refreshFileTree(root);
+      }
+    },
+    [refreshFileTree, setBaseHref],
+  );
+  applyRenamedPathRef.current = applyRenamedPath;
+
+  const renameTabFile = useCallback(
+    async (tabId: string, nextName: string): Promise<boolean> => {
+      const tab = tabsRef.current.find((t) => t.id === tabId);
+      if (!tab?.path) {
+        setStatusText("Save the file before renaming it.");
+        return false;
+      }
+      const result = await window.markedly.renameFile(tab.path, nextName);
+      if (!result.ok) {
+        setStatusText(result.error);
+        return false;
+      }
+      if (result.path !== result.from) {
+        applyRenamedPath(result.from, result.path, result.dirUrl);
+      }
+      return true;
+    },
+    [applyRenamedPath],
+  );
+
+  const handleRenameUnavailable = useCallback((tabId: string) => {
+    const tab = tabsRef.current.find((t) => t.id === tabId);
+    if (tab?.document && !tab.path) {
+      setStatusText("Save the file before renaming it.");
+    }
+  }, []);
 
   const openMarkdownFromTree = useCallback(
     (filePath: string) => {
@@ -999,6 +1075,9 @@ export function App() {
     const unsubs = [
       window.markedly.onOpenPath((p) => void openFilePathSmart(p)),
       window.markedly.onOpenPathNewTab((p) => void openPathInNewTab(p)),
+      window.markedly.onFileRenamed((from, path, dirUrl) => {
+        applyRenamedPathRef.current(from, path, dirUrl);
+      }),
       window.markedly.onFileChanged((p) => {
         for (const t of tabsRef.current) {
           if (t.path !== p) continue;
@@ -1191,6 +1270,7 @@ export function App() {
       tabs.map((t) => ({
         id: t.id,
         label: tabLabel(t),
+        fileName: t.path ? documentName(t) : null,
       })),
     [tabs],
   );
@@ -1659,6 +1739,8 @@ export function App() {
                 onClose={closeTab}
                 onReorderTabIds={reorderTabsByIds}
                 onNew={addTab}
+                onRenameFile={renameTabFile}
+                onRenameUnavailable={handleRenameUnavailable}
               />
             ) : null}
 

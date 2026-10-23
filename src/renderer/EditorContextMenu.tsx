@@ -577,7 +577,6 @@ export function EditorContextMenu({ children }: EditorContextMenuProps) {
               });
             }}
           >
-            <span className={styles.check} />
             <span className={styles.label}>Cut</span>
             <span className={styles.shortcut}>{keys("X")}</span>
           </ContextMenu.Item>
@@ -590,7 +589,6 @@ export function EditorContextMenu({ children }: EditorContextMenuProps) {
               });
             }}
           >
-            <span className={styles.check} />
             <span className={styles.label}>Copy</span>
             <span className={styles.shortcut}>{keys("C")}</span>
           </ContextMenu.Item>
@@ -609,7 +607,6 @@ export function EditorContextMenu({ children }: EditorContextMenuProps) {
               });
             }}
           >
-            <span className={styles.check} />
             <span className={styles.label}>Paste</span>
             <span className={styles.shortcut}>{keys("V")}</span>
           </ContextMenu.Item>
@@ -784,9 +781,6 @@ function MenuCheck({
       aria-label={label}
       onSelect={onSelect}
     >
-      <span className={styles.check}>
-        <ContextMenu.ItemIndicator>✓</ContextMenu.ItemIndicator>
-      </span>
       {icon ? <span className={styles.icon}>{icon}</span> : null}
       <span className={styles.label}>{label}</span>
       <span className={styles.shortcut}>{shortcut}</span>

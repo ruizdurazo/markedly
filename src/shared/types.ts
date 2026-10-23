@@ -32,6 +32,19 @@ export type WriteErr = { ok: false; error: string };
 
 export type WriteResult = WriteOk | WriteErr;
 
+export type RenameOk = {
+  ok: true;
+  from: string;
+  path: string;
+  dir: string;
+  dirUrl: string;
+  name: string;
+};
+
+export type RenameErr = { ok: false; error: string };
+
+export type RenameResult = RenameOk | RenameErr;
+
 export type DirTreeDir = {
   type: "dir";
   name: string;

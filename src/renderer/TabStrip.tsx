@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import * as ContextMenu from "@radix-ui/react-context-menu";
 
 import styles from "./TabStrip.module.scss";
 import { Tooltip } from "./Tooltip";
@@ -6,6 +7,8 @@ import { Tooltip } from "./Tooltip";
 export type TabStripTab = {
   id: string;
   label: string;
+  /** Basename of a file on disk. Null when this tab cannot be renamed in place. */
+  fileName: string | null;
 };
 
 type TabStripProps = {
@@ -15,11 +18,38 @@ type TabStripProps = {
   onClose: (tabId: string) => void;
   onReorderTabIds: (orderedIds: string[]) => void;
   onNew: () => void;
+  onRenameFile: (tabId: string, nextName: string) => Promise<boolean>;
+  onRenameUnavailable: (tabId: string) => void;
 };
 
 const DRAG_THRESHOLD_PX = 6;
 const EDGE_SCROLL_PX = 40;
 const EDGE_SCROLL_STEP_PX = 12;
+const MARKDOWN_EXTENSIONS = [".markdown", ".mdown", ".mkd", ".md"] as const;
+
+function splitMarkdownFileName(fileName: string): {
+  stem: string;
+  extension: string;
+} {
+  const lower = fileName.toLowerCase();
+  for (const ext of MARKDOWN_EXTENSIONS) {
+    if (lower.endsWith(ext) && fileName.length > ext.length) {
+      const splitAt = fileName.length - ext.length;
+      return {
+        stem: fileName.slice(0, splitAt),
+        extension: fileName.slice(splitAt),
+      };
+    }
+  }
+  return { stem: fileName, extension: "" };
+}
+
+function placeCaretAtEnd(input: HTMLInputElement) {
+  const end = input.value.length;
+  input.focus();
+  input.setSelectionRange(end, end);
+  input.scrollLeft = input.scrollWidth;
+}
 
 function reorderIdsAtPointer(
   ids: readonly string[],
@@ -105,14 +135,27 @@ export function TabStrip({
   onClose,
   onReorderTabIds,
   onNew,
+  onRenameFile,
+  onRenameUnavailable,
 }: TabStripProps) {
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef(tabs);
   const onReorderRef = useRef(onReorderTabIds);
   const onSelectRef = useRef(onSelect);
+  const onRenameFileRef = useRef(onRenameFile);
+  const onRenameUnavailableRef = useRef(onRenameUnavailable);
   tabsRef.current = tabs;
   onReorderRef.current = onReorderTabIds;
   onSelectRef.current = onSelect;
+  onRenameFileRef.current = onRenameFile;
+  onRenameUnavailableRef.current = onRenameUnavailable;
+
+  const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
+  const renamingTabIdRef = useRef<string | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const renameFinishingRef = useRef(false);
+  /** Ignore the blur that can follow opening the field, until the user edits or focus settles. */
+  const renameReadyRef = useRef(false);
 
   const sessionRef = useRef<PointerSession | null>(null);
   const ignoreNextClickRef = useRef(false);
@@ -306,7 +349,8 @@ export function TabStrip({
     tab: TabStripTab,
     index: number,
   ) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || e.ctrlKey) return;
+    if (renamingTabIdRef.current === tab.id) return;
     if (sessionRef.current) {
       endPointerSession();
     }
@@ -342,6 +386,63 @@ export function TabStrip({
     };
   }, []);
 
+  const finishRename = (commit: boolean) => {
+    if (renameFinishingRef.current) return;
+    const id = renamingTabIdRef.current;
+    if (!id) return;
+    const input = renameInputRef.current;
+    const current = tabsRef.current.find((t) => t.id === id)?.fileName ?? null;
+    const extension = current ? splitMarkdownFileName(current).extension : "";
+    let stem = input?.value.trim() ?? "";
+    if (
+      extension &&
+      stem.toLowerCase().endsWith(extension.toLowerCase()) &&
+      stem.length > extension.length
+    ) {
+      stem = stem.slice(0, -extension.length).trim();
+    }
+    const next = `${stem}${extension}`;
+    if (!commit || !stem || !current || next === current) {
+      renamingTabIdRef.current = null;
+      setRenamingTabId(null);
+      return;
+    }
+    renameFinishingRef.current = true;
+    void Promise.resolve(onRenameFileRef.current(id, next))
+      .then((ok) => {
+        if (!ok) {
+          renameFinishingRef.current = false;
+          const el = renameInputRef.current;
+          if (!el || renamingTabIdRef.current !== id) return;
+          el.focus();
+          el.select();
+          return;
+        }
+        if (renamingTabIdRef.current !== id) {
+          renameFinishingRef.current = false;
+          return;
+        }
+        renamingTabIdRef.current = null;
+        renameFinishingRef.current = false;
+        setRenamingTabId(null);
+      })
+      .catch(() => {
+        renameFinishingRef.current = false;
+      });
+  };
+
+  const beginRename = (tab: TabStripTab) => {
+    if (sessionRef.current) endPointerSession();
+    if (tab.id !== activeTabId) onSelectRef.current(tab.id);
+    if (!tab.fileName) {
+      onRenameUnavailableRef.current(tab.id);
+      return;
+    }
+    renameReadyRef.current = false;
+    renamingTabIdRef.current = tab.id;
+    setRenamingTabId(tab.id);
+  };
+
   useLayoutEffect(() => {
     const el = tabScrollRef.current;
     if (!el) return;
@@ -357,6 +458,49 @@ export function TabStrip({
       ro.disconnect();
     };
   }, [tabs, activeTabId]);
+
+  useEffect(() => {
+    if (!renamingTabId) return;
+    const tab = tabs.find((t) => t.id === renamingTabId);
+    if (tab?.fileName) return;
+    renamingTabIdRef.current = null;
+    renameFinishingRef.current = false;
+    setRenamingTabId(null);
+  }, [tabs, renamingTabId]);
+
+  useLayoutEffect(() => {
+    if (!renamingTabId) return;
+    const input = renameInputRef.current;
+    const scrollEl = tabScrollRef.current;
+    if (!input) return;
+    placeCaretAtEnd(input);
+    if (scrollEl) {
+      const tabEl = input.closest("[data-tab-id]");
+      if (tabEl instanceof HTMLElement) {
+        const tabRect = tabEl.getBoundingClientRect();
+        const scrollRect = scrollEl.getBoundingClientRect();
+        if (tabRect.left < scrollRect.left) {
+          scrollEl.scrollLeft -= scrollRect.left - tabRect.left;
+        } else if (tabRect.right > scrollRect.right) {
+          scrollEl.scrollLeft += tabRect.right - scrollRect.right;
+        }
+      }
+    }
+    let innerFrame = 0;
+    const outerFrame = requestAnimationFrame(() => {
+      innerFrame = requestAnimationFrame(() => {
+        if (renamingTabIdRef.current === renamingTabId) {
+          const el = renameInputRef.current;
+          if (!renameReadyRef.current && el) placeCaretAtEnd(el);
+          renameReadyRef.current = true;
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outerFrame);
+      cancelAnimationFrame(innerFrame);
+    };
+  }, [renamingTabId]);
 
   const tabById = new Map(tabs.map((t) => [t.id, t]));
   const displayOrder = dragUi?.previewOrderIds ?? tabs.map((t) => t.id);
@@ -392,40 +536,131 @@ export function TabStrip({
           const tab = tabById.get(id);
           if (!tab) return null;
           const index = tabs.findIndex((t) => t.id === tab.id);
+          const renameParts =
+            renamingTabId === tab.id && tab.fileName
+              ? splitMarkdownFileName(tab.fileName)
+              : null;
           return (
-            <div
+            <ContextMenu.Root
               key={tab.id}
-              data-tab-id={tab.id}
-              className={`${styles.tab} ${styles.tabSelect} ${tab.id === activeTabId ? styles.tabActive : ""}`}
-              role="tab"
-              aria-selected={tab.id === activeTabId ? "true" : "false"}
-              tabIndex={tab.id === activeTabId ? 0 : -1}
-              onClick={(ev) => {
-                if (ignoreNextClickRef.current) {
-                  ignoreNextClickRef.current = false;
-                  ev.preventDefault();
-                  return;
-                }
-                onSelect(tab.id);
+              onOpenChange={(open) => {
+                if (!open) return;
+                if (sessionRef.current) endPointerSession();
+                if (tab.id !== activeTabId) onSelectRef.current(tab.id);
               }}
-              onPointerDown={(e) => onTabPointerDown(e, tab, index)}
             >
-              <div className={styles.tabLabel}>{tab.label}</div>
-              <Tooltip content="Close tab">
-                <button
-                  type="button"
-                  className={styles.tabClose}
-                  aria-label="Close tab"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onClose(tab.id);
+              <ContextMenu.Trigger asChild>
+                <div
+                  data-tab-id={tab.id}
+                  className={`${styles.tab} ${styles.tabSelect} ${tab.id === activeTabId ? styles.tabActive : ""} ${renamingTabId === tab.id ? styles.tabRenaming : ""}`}
+                  role="tab"
+                  aria-selected={tab.id === activeTabId ? "true" : "false"}
+                  tabIndex={tab.id === activeTabId ? 0 : -1}
+                  onClick={(ev) => {
+                    if (ignoreNextClickRef.current) {
+                      ignoreNextClickRef.current = false;
+                      ev.preventDefault();
+                      return;
+                    }
+                    onSelect(tab.id);
+                  }}
+                  onPointerDown={(e) => onTabPointerDown(e, tab, index)}
+                >
+                  {renameParts ? (
+                    <div
+                      className={styles.tabRename}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      onContextMenu={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        ref={renameInputRef}
+                        type="text"
+                        className={styles.tabRenameInput}
+                        defaultValue={renameParts.stem}
+                        aria-label="File name"
+                        spellCheck={false}
+                        autoComplete="off"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        onPointerDown={() => {
+                          renameReadyRef.current = true;
+                        }}
+                        onBlur={() => {
+                          if (!renameReadyRef.current) {
+                            const el = renameInputRef.current;
+                            if (el) placeCaretAtEnd(el);
+                            return;
+                          }
+                          finishRename(true);
+                        }}
+                        onKeyDown={(e) => {
+                          renameReadyRef.current = true;
+                          if (e.nativeEvent.isComposing) return;
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            finishRename(false);
+                          } else if (e.key === "Enter") {
+                            e.preventDefault();
+                            finishRename(true);
+                          }
+                        }}
+                      />
+                      {renameParts.extension ? (
+                        <span className={styles.tabRenameExtension}>
+                          {renameParts.extension}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className={styles.tabLabel}>{tab.label}</div>
+                  )}
+                  <Tooltip content="Close tab">
+                    <button
+                      type="button"
+                      className={styles.tabClose}
+                      aria-label="Close tab"
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        if (renamingTabIdRef.current === tab.id) {
+                          finishRename(false);
+                        }
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClose(tab.id);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </Tooltip>
+                </div>
+              </ContextMenu.Trigger>
+              <ContextMenu.Portal>
+                <ContextMenu.Content
+                  className={styles.menuContent}
+                  onCloseAutoFocus={(event) => {
+                    if (renamingTabIdRef.current === tab.id) {
+                      event.preventDefault();
+                    }
                   }}
                 >
-                  ×
-                </button>
-              </Tooltip>
-            </div>
+                  <ContextMenu.Item
+                    className={styles.menuItem}
+                    onSelect={() => beginRename(tab)}
+                  >
+                    Rename
+                  </ContextMenu.Item>
+                  <ContextMenu.Item
+                    className={styles.menuItem}
+                    onSelect={() => onClose(tab.id)}
+                  >
+                    Close
+                  </ContextMenu.Item>
+                </ContextMenu.Content>
+              </ContextMenu.Portal>
+            </ContextMenu.Root>
           );
         })}
       </div>

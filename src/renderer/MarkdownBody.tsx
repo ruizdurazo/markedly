@@ -220,7 +220,6 @@ export const MarkdownBody = forwardRef<MarkdownBodyHandle, MarkdownBodyProps>(
                 if (text) writeClipboardText(text);
               }}
             >
-              <span className={menuStyles.check} />
               <span className={menuStyles.label}>Copy</span>
               <span className={menuStyles.shortcut}>
                 {IS_MAC ? "⌘C" : "Ctrl+C"}

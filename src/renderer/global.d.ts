@@ -2,6 +2,7 @@ import type {
   ColorSchemePreference,
   ListMarkdownTreeResult,
   ReadResult,
+  RenameResult,
   ResolvedMdLink,
   WriteResult,
 } from "../shared/types.js";
@@ -15,6 +16,7 @@ declare global {
       listMarkdownTree: (rootPath: string) => Promise<ListMarkdownTreeResult>;
       readFile: (path: string) => Promise<ReadResult>;
       writeFile: (path: string, content: string) => Promise<WriteResult>;
+      renameFile: (path: string, name: string) => Promise<RenameResult>;
       saveDialog: (suggestedName: string) => Promise<string | null>;
       normalizeMarkdownPath: (path: string) => Promise<string | null>;
       resolveMarkdownLink: (
@@ -27,6 +29,9 @@ declare global {
       onOpenPath: (cb: (path: string) => void) => () => void;
       onOpenPathNewTab: (cb: (path: string) => void) => () => void;
       onFileChanged: (cb: (path: string) => void) => () => void;
+      onFileRenamed: (
+        cb: (from: string, path: string, dirUrl: string) => void,
+      ) => () => void;
       onThemeChanged: (cb: () => void) => () => void;
       setNativeColorScheme: (pref: ColorSchemePreference) => Promise<void>;
       setHasOpenDocument: (hasOpenDocument: boolean) => Promise<void>;

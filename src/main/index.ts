@@ -8,13 +8,14 @@ import {
   shell,
 } from "electron";
 import { existsSync, watch } from "node:fs";
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type {
   ColorSchemePreference,
   DirTreeNode,
   ListMarkdownTreeResult,
+  RenameResult,
   ResolvedMdLink,
 } from "../shared/types.js";
 
@@ -78,14 +79,52 @@ async function validateMdPath(filePath: string): Promise<string | null> {
   }
 }
 
+const MARKDOWN_EXTENSIONS = [".markdown", ".mdown", ".mkd", ".md"] as const;
+
 function isMarkdownExtension(filePath: string): boolean {
   const lower = filePath.toLowerCase();
-  return (
-    lower.endsWith(".md") ||
-    lower.endsWith(".markdown") ||
-    lower.endsWith(".mdown") ||
-    lower.endsWith(".mkd")
-  );
+  return MARKDOWN_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+function markdownExtension(fileName: string): string | null {
+  const lower = fileName.toLowerCase();
+  for (const ext of MARKDOWN_EXTENSIONS) {
+    if (lower.endsWith(ext) && fileName.length > ext.length) return ext;
+  }
+  return null;
+}
+
+/** Basename to write in the file's current folder, or a status-bar error. */
+function resolveRenameFileName(
+  currentBase: string,
+  typedName: string,
+): { ok: true; name: string } | { ok: false; error: string } {
+  const name = typedName.trim();
+  if (
+    !name ||
+    name === "." ||
+    name === ".." ||
+    name.includes("/") ||
+    name.includes("\\") ||
+    /[\u0000-\u001f]/.test(name)
+  ) {
+    return { ok: false, error: "Invalid file name" };
+  }
+  if (Buffer.byteLength(name) > 255) {
+    return { ok: false, error: "File name is too long" };
+  }
+  if (markdownExtension(name)) return { ok: true, name };
+  if (name.includes(".")) {
+    return {
+      ok: false,
+      error: "Use a Markdown extension (.md, .markdown, .mdown, or .mkd)",
+    };
+  }
+  const withExt = `${name}${markdownExtension(currentBase) ?? ".md"}`;
+  if (Buffer.byteLength(withExt) > 255) {
+    return { ok: false, error: "File name is too long" };
+  }
+  return { ok: true, name: withExt };
 }
 
 const MAX_TREE_DEPTH = 48;
@@ -206,6 +245,18 @@ function notifyFileChanged(filePath: string) {
   }
 }
 
+function notifyFileRenamed(
+  sender: Electron.WebContents,
+  from: string,
+  path: string,
+  dirUrl: string,
+) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed() || win.webContents === sender) continue;
+    win.webContents.send("md:file-renamed", from, path, dirUrl);
+  }
+}
+
 function ensureWatching(filePath: string) {
   if (fileWatchers.has(filePath)) return;
   try {
@@ -225,6 +276,28 @@ function ensureWatching(filePath: string) {
   } catch {
     // optional
   }
+}
+
+function releaseWatch(filePath: string) {
+  const entry = fileWatchers.get(filePath);
+  if (!entry) return;
+  if (entry.debounce != null) clearTimeout(entry.debounce);
+  entry.debounce = null;
+  try {
+    entry.handle.close();
+  } catch {
+    // already closed
+  }
+  fileWatchers.delete(filePath);
+}
+
+function renameErrorMessage(err: unknown): string {
+  const code =
+    err && typeof err === "object" && "code" in err ? err.code : undefined;
+  if (code === "EEXIST") return "A file with that name already exists";
+  if (code === "ENOENT") return "File not found";
+  if (code === "EACCES" || code === "EPERM") return "Could not rename the file";
+  return err instanceof Error ? err.message : "Rename failed";
 }
 
 function getDialogParentWindow(): BrowserWindow | null {
@@ -948,6 +1021,70 @@ if (!gotLock) {
         return { ok: false as const, error: message };
       }
     });
+
+    ipcMain.handle(
+      "md:rename",
+      async (event, rawFrom: unknown, rawName: unknown): Promise<RenameResult> => {
+        if (typeof rawFrom !== "string" || typeof rawName !== "string") {
+          return { ok: false, error: "Invalid arguments" };
+        }
+        const from = await validateMdPath(rawFrom);
+        if (!from || !isMarkdownExtension(from)) {
+          return { ok: false, error: "File not found" };
+        }
+        const resolved = resolveRenameFileName(basename(from), rawName);
+        if (!resolved.ok) return resolved;
+        const nextName = resolved.name;
+        if (nextName === basename(from)) {
+          return {
+            ok: true,
+            from,
+            path: from,
+            dir: dirname(from),
+            dirUrl: dirToFileUrl(dirname(from)),
+            name: basename(from),
+          };
+        }
+        const dest = join(dirname(from), nextName);
+        let fromReal: string;
+        try {
+          fromReal = await realpath(from);
+        } catch {
+          return { ok: false, error: "File not found" };
+        }
+        try {
+          const destReal = await realpath(dest);
+          if (destReal !== fromReal) {
+            return { ok: false, error: "A file with that name already exists" };
+          }
+        } catch {
+          // destination does not exist yet
+        }
+        try {
+          releaseWatch(from);
+          noteOwnWrite(from);
+          noteOwnWrite(dest);
+          await rename(from, dest);
+          ensureWatching(dest);
+          if (process.platform === "darwin") {
+            app.addRecentDocument(dest);
+          }
+          const dirUrl = dirToFileUrl(dirname(dest));
+          notifyFileRenamed(event.sender, from, dest, dirUrl);
+          return {
+            ok: true,
+            from,
+            path: dest,
+            dir: dirname(dest),
+            dirUrl,
+            name: basename(dest),
+          };
+        } catch (err) {
+          ensureWatching(from);
+          return { ok: false, error: renameErrorMessage(err) };
+        }
+      },
+    );
 
     ipcMain.handle("md:save-dialog", async (event, suggested: unknown) => {
       const win =
