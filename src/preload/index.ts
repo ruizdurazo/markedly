@@ -69,6 +69,34 @@ const api = {
     ) as Promise<void>,
   setStatusBarVisible: (visible: boolean) =>
     ipcRenderer.invoke("md:set-status-bar-visible", visible) as Promise<void>,
+  setFileTreeVisible: (visible: boolean) =>
+    ipcRenderer.invoke("md:set-file-tree-visible", visible) as Promise<void>,
+  setOutlineVisible: (visible: boolean) =>
+    ipcRenderer.invoke("md:set-outline-visible", visible) as Promise<void>,
+  setEditingState: (editing: boolean, canEdit: boolean) =>
+    ipcRenderer.invoke(
+      "md:set-editing-state",
+      editing,
+      canEdit,
+    ) as Promise<void>,
+  onFileTreeVisible: (cb: (visible: boolean) => void) => {
+    const fn = (_e: Electron.IpcRendererEvent, visible: boolean) =>
+      cb(visible);
+    ipcRenderer.on("md:file-tree-visible", fn);
+    return () => ipcRenderer.removeListener("md:file-tree-visible", fn);
+  },
+  onOutlineVisible: (cb: (visible: boolean) => void) => {
+    const fn = (_e: Electron.IpcRendererEvent, visible: boolean) =>
+      cb(visible);
+    ipcRenderer.on("md:outline-visible", fn);
+    return () => ipcRenderer.removeListener("md:outline-visible", fn);
+  },
+  onEditing: (cb: (editing: boolean) => void) => {
+    const fn = (_e: Electron.IpcRendererEvent, editing: boolean) =>
+      cb(editing);
+    ipcRenderer.on("md:editing", fn);
+    return () => ipcRenderer.removeListener("md:editing", fn);
+  },
   onStatusBarVisible: (cb: (visible: boolean) => void) => {
     const fn = (_e: Electron.IpcRendererEvent, visible: boolean) => cb(visible);
     ipcRenderer.on("md:status-bar-visible", fn);

@@ -768,7 +768,13 @@ export function App() {
 
   const beginEditing = useCallback(() => {
     const tab = getActiveTab();
-    if (!tab?.document || tab.editing) return;
+    if (!tab?.document || tab.editing) {
+      void window.markedly.setEditingState(
+        Boolean(tab?.document && tab.editing),
+        Boolean(tab?.document),
+      );
+      return;
+    }
     setTabs((prev) =>
       prev.map((t) => (t.id === tab.id ? { ...t, editing: true } : t)),
     );
@@ -776,9 +782,18 @@ export function App() {
 
   const finishEditing = useCallback(async () => {
     const tab = getActiveTab();
-    if (!tab?.document || !tab.editing) return;
+    if (!tab?.document || !tab.editing) {
+      void window.markedly.setEditingState(
+        Boolean(tab?.document && tab.editing),
+        Boolean(tab?.document),
+      );
+      return;
+    }
     const saved = await saveActiveTab(false);
-    if (!saved) return;
+    if (!saved) {
+      void window.markedly.setEditingState(true, true);
+      return;
+    }
     const cache = tabContentCacheRef.current.get(tab.id);
     if (cache && activeTabIdRef.current === tab.id) {
       setMarkdownHtml(cache.html);
@@ -907,6 +922,21 @@ export function App() {
   }, [statusBarVisible]);
 
   useEffect(() => {
+    void window.markedly.setFileTreeVisible(filePanelExpanded);
+  }, [filePanelExpanded]);
+
+  useEffect(() => {
+    void window.markedly.setOutlineVisible(tocPanelExpanded);
+  }, [tocPanelExpanded]);
+
+  useEffect(() => {
+    void window.markedly.setEditingState(
+      activeEditing,
+      Boolean(activeTab?.document),
+    );
+  }, [activeEditing, activeTab?.document]);
+
+  useEffect(() => {
     if (colorSchemePref !== "system") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => setSystemSchemeTick((n) => n + 1);
@@ -1023,6 +1053,26 @@ export function App() {
       window.markedly.onStatusBarVisible((visible) => {
         setStatusBarVisible(visible);
       }),
+      window.markedly.onFileTreeVisible((visible) => {
+        setFilePanelExpanded((current) => {
+          if (current === visible) {
+            void window.markedly.setFileTreeVisible(current);
+          }
+          return visible;
+        });
+      }),
+      window.markedly.onOutlineVisible((visible) => {
+        setTocPanelExpanded((current) => {
+          if (current === visible) {
+            void window.markedly.setOutlineVisible(current);
+          }
+          return visible;
+        });
+      }),
+      window.markedly.onEditing((editing) => {
+        if (editing) beginEditing();
+        else void finishEditing();
+      }),
     ];
     return () => {
       for (const u of unsubs) u();
@@ -1034,6 +1084,8 @@ export function App() {
     newDocument,
     openFilePathSmart,
     openPathInNewTab,
+    beginEditing,
+    finishEditing,
     pickFolderForFileTree,
     saveActiveTab,
   ]);

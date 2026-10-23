@@ -352,13 +352,16 @@ function createWindow(): BrowserWindow {
   }
   win.on("focus", () => {
     syncNewTabMenuEnabled();
+    syncChromeMenu();
   });
   win.on("closed", () => {
     windowHasOpenDocument.delete(win.id);
+    windowChromeState.delete(win.id);
     if (win.id === firstCreatedWindowId) {
       firstCreatedWindowId = null;
     }
     syncNewTabMenuEnabled();
+    syncChromeMenu();
   });
 
   const devEnabled = process.env.VITE_DEV_SERVER === "1" && !app.isPackaged;
@@ -462,6 +465,50 @@ function setStatusBarMenuChecked(visible: boolean) {
   const item = Menu.getApplicationMenu()?.getMenuItemById("show-status-bar");
   if (!item) return;
   item.checked = visible;
+}
+
+type WindowChromeState = {
+  fileTree: boolean;
+  outline: boolean;
+  editing: boolean;
+  canEdit: boolean;
+};
+
+const windowChromeState = new Map<number, WindowChromeState>();
+
+function chromeStateFor(id: number | undefined): WindowChromeState {
+  if (id == null) {
+    return { fileTree: false, outline: false, editing: false, canEdit: false };
+  }
+  return (
+    windowChromeState.get(id) ?? {
+      fileTree: false,
+      outline: false,
+      editing: false,
+      canEdit: false,
+    }
+  );
+}
+
+function syncChromeMenu() {
+  const menu = Menu.getApplicationMenu();
+  if (!menu) return;
+  const focused = BrowserWindow.getFocusedWindow();
+  const state = chromeStateFor(focused?.id);
+  const fileTree = menu.getMenuItemById("show-file-tree");
+  const outline = menu.getMenuItemById("show-outline");
+  const edit = menu.getMenuItemById("edit-document");
+  if (fileTree) fileTree.checked = state.fileTree;
+  if (outline) outline.checked = state.outline;
+  if (edit) {
+    edit.checked = state.canEdit && state.editing;
+    edit.enabled = focused != null && state.canEdit;
+  }
+}
+
+function patchChromeState(win: BrowserWindow, patch: Partial<WindowChromeState>) {
+  windowChromeState.set(win.id, { ...chromeStateFor(win.id), ...patch });
+  if (BrowserWindow.getFocusedWindow()?.id === win.id) syncChromeMenu();
 }
 
 function broadcastStatusBarVisible(visible: boolean) {
@@ -601,6 +648,44 @@ function buildMenu() {
       label: "View",
       submenu: [
         {
+          id: "show-file-tree",
+          label: "Show File Tree",
+          type: "checkbox",
+          accelerator: "CmdOrCtrl+[",
+          click: (menuItem) => {
+            getTargetWindowForOpen()?.webContents.send(
+              "md:file-tree-visible",
+              menuItem.checked,
+            );
+          },
+        },
+        {
+          id: "show-outline",
+          label: "Show Outline",
+          type: "checkbox",
+          accelerator: "CmdOrCtrl+]",
+          click: (menuItem) => {
+            getTargetWindowForOpen()?.webContents.send(
+              "md:outline-visible",
+              menuItem.checked,
+            );
+          },
+        },
+        {
+          id: "edit-document",
+          label: "Edit",
+          type: "checkbox",
+          enabled: false,
+          accelerator: "CmdOrCtrl+\\",
+          click: (menuItem) => {
+            getTargetWindowForOpen()?.webContents.send(
+              "md:editing",
+              menuItem.checked,
+            );
+          },
+        },
+        { type: "separator" },
+        {
           id: "show-status-bar",
           label: "Show Status Bar",
           type: "checkbox",
@@ -718,6 +803,30 @@ if (!gotLock) {
     ipcMain.handle("md:set-status-bar-visible", (_event, visible: unknown) => {
       setStatusBarMenuChecked(visible !== false);
     });
+
+    ipcMain.handle("md:set-file-tree-visible", (event, visible: unknown) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return;
+      patchChromeState(win, { fileTree: visible === true });
+    });
+
+    ipcMain.handle("md:set-outline-visible", (event, visible: unknown) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return;
+      patchChromeState(win, { outline: visible === true });
+    });
+
+    ipcMain.handle(
+      "md:set-editing-state",
+      (event, editing: unknown, canEdit: unknown) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (!win) return;
+        patchChromeState(win, {
+          editing: editing === true,
+          canEdit: canEdit === true,
+        });
+      },
+    );
 
     ipcMain.handle("md:new-window", () => {
       void createWindow();

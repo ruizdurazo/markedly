@@ -31,6 +31,12 @@ declare global {
       setNativeColorScheme: (pref: ColorSchemePreference) => Promise<void>;
       setHasOpenDocument: (hasOpenDocument: boolean) => Promise<void>;
       setStatusBarVisible: (visible: boolean) => Promise<void>;
+      setFileTreeVisible: (visible: boolean) => Promise<void>;
+      setOutlineVisible: (visible: boolean) => Promise<void>;
+      setEditingState: (editing: boolean, canEdit: boolean) => Promise<void>;
+      onFileTreeVisible: (cb: (visible: boolean) => void) => () => void;
+      onOutlineVisible: (cb: (visible: boolean) => void) => () => void;
+      onEditing: (cb: (editing: boolean) => void) => () => void;
       onStatusBarVisible: (cb: (visible: boolean) => void) => () => void;
       onNewTab: (cb: () => void) => () => void;
       onCloseTab: (cb: () => void) => () => void;
