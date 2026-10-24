@@ -147,13 +147,30 @@
 .menuContent {
   z-index: 40;
   min-width: 160px;
+  max-height: min(
+    90vh,
+    var(--radix-context-menu-content-available-height, 90vh)
+  );
   padding: 4px;
+  margin: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--card);
   color: var(--foreground);
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 8px 24px var(--backdrop);
   -webkit-app-region: no-drag;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--more-muted);
+    border-radius: 0;
+  }
 }
 
 .menuItem {

@@ -212,19 +212,21 @@ export const MarkdownBody = forwardRef<MarkdownBodyHandle, MarkdownBodyProps>(
         </ContextMenu.Trigger>
         <ContextMenu.Portal>
           <ContextMenu.Content className={menuStyles.content}>
-            <ContextMenu.Item
-              className={menuStyles.item}
-              disabled={!canCopy}
-              onSelect={() => {
-                const text = copyTextRef.current;
-                if (text) writeClipboardText(text);
-              }}
-            >
-              <span className={menuStyles.label}>Copy</span>
-              <span className={menuStyles.shortcut}>
-                {IS_MAC ? "⌘C" : "Ctrl+C"}
-              </span>
-            </ContextMenu.Item>
+            <div className={menuStyles.scroll}>
+              <ContextMenu.Item
+                className={menuStyles.item}
+                disabled={!canCopy}
+                onSelect={() => {
+                  const text = copyTextRef.current;
+                  if (text) writeClipboardText(text);
+                }}
+              >
+                <span className={menuStyles.label}>Copy</span>
+                <span className={menuStyles.shortcut}>
+                  {IS_MAC ? "⌘C" : "Ctrl+C"}
+                </span>
+              </ContextMenu.Item>
+            </div>
           </ContextMenu.Content>
         </ContextMenu.Portal>
       </ContextMenu.Root>

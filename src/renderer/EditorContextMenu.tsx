@@ -568,162 +568,164 @@ export function EditorContextMenu({ children }: EditorContextMenuProps) {
       <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content className={styles.content}>
-          <ContextMenu.Item
-            className={styles.item}
-            disabled={!canCopy}
-            onSelect={() => {
-              run(() => {
-                editor.dispatchCommand(CUT_COMMAND, null);
-              });
-            }}
-          >
-            <span className={styles.label}>Cut</span>
-            <span className={styles.shortcut}>{keys("X")}</span>
-          </ContextMenu.Item>
-          <ContextMenu.Item
-            className={styles.item}
-            disabled={!canCopy}
-            onSelect={() => {
-              run(() => {
-                editor.dispatchCommand(COPY_COMMAND, null);
-              });
-            }}
-          >
-            <span className={styles.label}>Copy</span>
-            <span className={styles.shortcut}>{keys("C")}</span>
-          </ContextMenu.Item>
-          <ContextMenu.Item
-            className={styles.item}
-            onSelect={() => {
-              editor.focus(() => {
-                void navigator.clipboard.readText().then(
-                  (text) => {
-                    insertPlainText(editor, text);
-                  },
-                  () => {
-                    /* clipboard permission denied */
-                  },
-                );
-              });
-            }}
-          >
-            <span className={styles.label}>Paste</span>
-            <span className={styles.shortcut}>{keys("V")}</span>
-          </ContextMenu.Item>
-          <ContextMenu.Separator className={styles.separator} />
-          <MenuCheck
-            label="Bold"
-            icon={styleIcon(Bold)}
-            shortcut={keys("B")}
-            checked={bold}
-            disabled={!canFormat}
-            onSelect={() => format("bold")}
-          />
-          <MenuCheck
-            label="Italic"
-            icon={styleIcon(Italic)}
-            shortcut={keys("I")}
-            checked={italic}
-            disabled={!canFormat}
-            onSelect={() => format("italic")}
-          />
-          <MenuCheck
-            label="Strikethrough"
-            icon={styleIcon(Strikethrough)}
-            shortcut={keys("X", true)}
-            checked={strike}
-            disabled={!canFormat}
-            onSelect={() => format("strikethrough")}
-          />
-          <MenuCheck
-            label="Underline"
-            icon={styleIcon(Underline)}
-            shortcut={keys("U")}
-            checked={underline}
-            disabled={!canFormat}
-            onSelect={() => format("underline")}
-          />
-          <MenuCheck
-            label="Code"
-            icon={styleIcon(Code)}
-            shortcut={keys("E")}
-            checked={code}
-            disabled={!canFormat}
-            onSelect={() => format("code")}
-          />
-          <ContextMenu.Separator className={styles.separator} />
-          {HEADING_TAGS.map((tag, index) => (
+          <div className={styles.scroll}>
+            <ContextMenu.Item
+              className={styles.item}
+              disabled={!canCopy}
+              onSelect={() => {
+                run(() => {
+                  editor.dispatchCommand(CUT_COMMAND, null);
+                });
+              }}
+            >
+              <span className={styles.label}>Cut</span>
+              <span className={styles.shortcut}>{keys("X")}</span>
+            </ContextMenu.Item>
+            <ContextMenu.Item
+              className={styles.item}
+              disabled={!canCopy}
+              onSelect={() => {
+                run(() => {
+                  editor.dispatchCommand(COPY_COMMAND, null);
+                });
+              }}
+            >
+              <span className={styles.label}>Copy</span>
+              <span className={styles.shortcut}>{keys("C")}</span>
+            </ContextMenu.Item>
+            <ContextMenu.Item
+              className={styles.item}
+              onSelect={() => {
+                editor.focus(() => {
+                  void navigator.clipboard.readText().then(
+                    (text) => {
+                      insertPlainText(editor, text);
+                    },
+                    () => {
+                      /* clipboard permission denied */
+                    },
+                  );
+                });
+              }}
+            >
+              <span className={styles.label}>Paste</span>
+              <span className={styles.shortcut}>{keys("V")}</span>
+            </ContextMenu.Item>
+            <ContextMenu.Separator className={styles.separator} />
             <MenuCheck
-              key={tag}
-              label={`Heading ${index + 1}`}
-              shortcut={keys(String(index + 1), false, true)}
-              checked={heading === tag}
+              label="Bold"
+              icon={styleIcon(Bold)}
+              shortcut={keys("B")}
+              checked={bold}
+              disabled={!canFormat}
+              onSelect={() => format("bold")}
+            />
+            <MenuCheck
+              label="Italic"
+              icon={styleIcon(Italic)}
+              shortcut={keys("I")}
+              checked={italic}
+              disabled={!canFormat}
+              onSelect={() => format("italic")}
+            />
+            <MenuCheck
+              label="Strikethrough"
+              icon={styleIcon(Strikethrough)}
+              shortcut={keys("X", true)}
+              checked={strike}
+              disabled={!canFormat}
+              onSelect={() => format("strikethrough")}
+            />
+            <MenuCheck
+              label="Underline"
+              icon={styleIcon(Underline)}
+              shortcut={keys("U")}
+              checked={underline}
+              disabled={!canFormat}
+              onSelect={() => format("underline")}
+            />
+            <MenuCheck
+              label="Code"
+              icon={styleIcon(Code)}
+              shortcut={keys("E")}
+              checked={code}
+              disabled={!canFormat}
+              onSelect={() => format("code")}
+            />
+            <ContextMenu.Separator className={styles.separator} />
+            {HEADING_TAGS.map((tag, index) => (
+              <MenuCheck
+                key={tag}
+                label={`Heading ${index + 1}`}
+                shortcut={keys(String(index + 1), false, true)}
+                checked={heading === tag}
+                disabled={!canFormat}
+                onSelect={() => {
+                  run(() => toggleHeading(editor, tag));
+                }}
+              />
+            ))}
+            <ContextMenu.Separator className={styles.separator} />
+            <MenuCheck
+              label="Code block"
+              icon={styleIcon(CodeBrackets)}
+              shortcut={keys("E", true)}
+              checked={codeBlock}
               disabled={!canFormat}
               onSelect={() => {
-                run(() => toggleHeading(editor, tag));
+                run(() => toggleCodeBlock(editor));
               }}
             />
-          ))}
-          <ContextMenu.Separator className={styles.separator} />
-          <MenuCheck
-            label="Code block"
-            icon={styleIcon(CodeBrackets)}
-            shortcut={keys("E", true)}
-            checked={codeBlock}
-            disabled={!canFormat}
-            onSelect={() => {
-              run(() => toggleCodeBlock(editor));
-            }}
-          />
-          <MenuCheck
-            label="Quote"
-            icon={styleIcon(Quote)}
-            shortcut={keys("'")}
-            checked={quote}
-            disabled={!canFormat}
-            onSelect={() => {
-              run(() => toggleQuote(editor));
-            }}
-          />
-          <MenuCheck
-            label="Bullet list"
-            icon={styleIcon(List)}
-            shortcut={keys("8", true)}
-            checked={bullet}
-            disabled={!canFormat}
-            onSelect={() => {
-              run(() => toggleList(editor, "bullet"));
-            }}
-          />
-          <MenuCheck
-            label="Numbered list"
-            icon={styleIcon(NumberedListLeft)}
-            shortcut={keys("7", true)}
-            checked={numbered}
-            disabled={!canFormat}
-            onSelect={() => {
-              run(() => toggleList(editor, "number"));
-            }}
-          />
-          <MenuCheck
-            label="To-do list"
-            icon={styleIcon(TaskList)}
-            shortcut={keys("9", true)}
-            checked={todo}
-            disabled={!canFormat}
-            onSelect={() => {
-              run(() => toggleList(editor, "check"));
-            }}
-          />
-          <ContextMenu.Separator className={styles.separator} />
-          <MenuCheck
-            label="Link"
-            icon={styleIcon(Link)}
-            shortcut={keys("K")}
-            checked={linkUrl != null}
-            disabled={!canFormat}
-            onSelect={openLinkPrompt}
-          />
+            <MenuCheck
+              label="Quote"
+              icon={styleIcon(Quote)}
+              shortcut={keys("'")}
+              checked={quote}
+              disabled={!canFormat}
+              onSelect={() => {
+                run(() => toggleQuote(editor));
+              }}
+            />
+            <MenuCheck
+              label="Bullet list"
+              icon={styleIcon(List)}
+              shortcut={keys("8", true)}
+              checked={bullet}
+              disabled={!canFormat}
+              onSelect={() => {
+                run(() => toggleList(editor, "bullet"));
+              }}
+            />
+            <MenuCheck
+              label="Numbered list"
+              icon={styleIcon(NumberedListLeft)}
+              shortcut={keys("7", true)}
+              checked={numbered}
+              disabled={!canFormat}
+              onSelect={() => {
+                run(() => toggleList(editor, "number"));
+              }}
+            />
+            <MenuCheck
+              label="To-do list"
+              icon={styleIcon(TaskList)}
+              shortcut={keys("9", true)}
+              checked={todo}
+              disabled={!canFormat}
+              onSelect={() => {
+                run(() => toggleList(editor, "check"));
+              }}
+            />
+            <ContextMenu.Separator className={styles.separator} />
+            <MenuCheck
+              label="Link"
+              icon={styleIcon(Link)}
+              shortcut={keys("K")}
+              checked={linkUrl != null}
+              disabled={!canFormat}
+              onSelect={openLinkPrompt}
+            />
+          </div>
         </ContextMenu.Content>
       </ContextMenu.Portal>
       {caretLink && !linkPrompt
