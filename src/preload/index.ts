@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   ColorSchemePreference,
+  KnownFolderId,
   ListMarkdownTreeResult,
   ReadResult,
   RenameResult,
@@ -14,6 +15,8 @@ const api = {
     ipcRenderer.invoke("md:open-dialog") as Promise<string | null>,
   openFolderDialog: () =>
     ipcRenderer.invoke("md:open-folder-dialog") as Promise<string | null>,
+  knownFolder: (id: KnownFolderId) =>
+    ipcRenderer.invoke("md:known-folder", id) as Promise<string | null>,
   listMarkdownTree: (rootPath: string) =>
     ipcRenderer.invoke(
       "md:list-markdown-tree",

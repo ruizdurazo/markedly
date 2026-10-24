@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { Folder, NavArrowDown, NavArrowRight, Page } from "iconoir-react";
-import type { DirTreeNode } from "../shared/types.js";
+import {
+  Computer,
+  DownloadCircle,
+  Folder,
+  NavArrowDown,
+  NavArrowRight,
+  Page,
+  EmptyPage,
+} from "iconoir-react";
+import type { DirTreeNode, KnownFolderId } from "../shared/types.js";
 import styles from "./FileTreePanel.module.scss";
 
 const iconProps = {
@@ -21,9 +29,22 @@ type FileTreePanelProps = {
   treeLoading: boolean;
   treeError: string | null;
   onPickFolder: () => void;
+  onOpenLocation: (id: KnownFolderId) => void;
+  activeLocation: KnownFolderId | null;
   onRefresh: () => void;
   onOpenMarkdown: (path: string) => void;
 };
+
+const locations: {
+  id: KnownFolderId;
+  label: string;
+  hint?: string;
+  Icon: typeof Folder;
+}[] = [
+  { id: "desktop", label: "Desktop", Icon: Computer },
+  { id: "documents", label: "Documents", Icon: EmptyPage },
+  { id: "downloads", label: "Downloads", Icon: DownloadCircle },
+];
 
 function TreeList(props: {
   nodes: DirTreeNode[];
@@ -109,7 +130,8 @@ export function FileTreePanel({
   treeLoading,
   treeError,
   onPickFolder,
-  onRefresh,
+  onOpenLocation,
+  activeLocation,
   onOpenMarkdown,
 }: FileTreePanelProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
@@ -171,7 +193,35 @@ export function FileTreePanel({
           </p>
         ) : null} */}
 
-        <button type="button" className={styles.cta} onClick={onPickFolder}>
+        <div className={styles.locations} role="group" aria-label="Places">
+          {locations.map(({ id, label, hint, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              className={`${styles.location} ${activeLocation === id ? styles.locationActive : ""}`}
+              aria-pressed={activeLocation === id}
+              disabled={treeLoading}
+              onClick={() => onOpenLocation(id)}
+            >
+              <span className={styles.locationIcon} aria-hidden>
+                <Icon {...iconProps} />
+              </span>
+              <span className={styles.locationLabel}>
+                {label}
+                {hint ? (
+                  <span className={styles.locationHint}>{hint}</span>
+                ) : null}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          className={styles.cta}
+          onClick={onPickFolder}
+          disabled={treeLoading}
+        >
           <Folder {...iconProps} />
           Open folder…
         </button>

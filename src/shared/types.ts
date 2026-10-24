@@ -70,5 +70,8 @@ export type ListMarkdownTreeErr = { ok: false; error: string };
 
 export type ListMarkdownTreeResult = ListMarkdownTreeOk | ListMarkdownTreeErr;
 
+/** Well-known folders the file tree can open without a dialog. */
+export type KnownFolderId = "desktop" | "downloads" | "documents";
+
 /** In-app appearance: OS-driven, forced light, or forced dark. */
 export type ColorSchemePreference = "system" | "light" | "dark";

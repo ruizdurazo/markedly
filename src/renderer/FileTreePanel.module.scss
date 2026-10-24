@@ -79,6 +79,68 @@
   word-break: break-all;
 }
 
+.locations {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.location {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 16px;
+  text-align: left;
+  color: var(--foreground);
+  background: transparent;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+.locationActive {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  border-color: var(--border);
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  }
+}
+
+.locationIcon {
+  flex-shrink: 0;
+  display: flex;
+  color: var(--muted);
+}
+
+.locationLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.locationHint {
+  margin-left: 6px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .cta {
   display: inline-flex;
   align-items: center;
@@ -96,8 +158,13 @@
   cursor: pointer;
   margin-bottom: 8px;
 
-  &:hover {
+  &:hover:not(:disabled) {
     border-color: color-mix(in srgb, var(--foreground) 16%, var(--border));
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
   }
 }
 

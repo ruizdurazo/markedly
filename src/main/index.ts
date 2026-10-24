@@ -8,12 +8,20 @@ import {
   shell,
 } from "electron";
 import { existsSync, watch } from "node:fs";
-import { readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import {
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type {
   ColorSchemePreference,
   DirTreeNode,
+  KnownFolderId,
   ListMarkdownTreeResult,
   RenameResult,
   ResolvedMdLink,
@@ -162,6 +170,7 @@ async function listMarkdownDirTree(
     if (!isPathInsideRoot(rootDir, full)) continue;
     if (ent.isDirectory()) {
       const children = await listMarkdownDirTree(rootDir, full, depth + 1);
+      if (children.length === 0) continue;
       nodes.push({ type: "dir", name: ent.name, path: full, children });
     } else if (ent.isFile() && isMarkdownExtension(full)) {
       nodes.push({ type: "file", name: ent.name, path: full });
@@ -412,7 +421,13 @@ function createWindow(): BrowserWindow {
   if (process.platform === "darwin") {
     options.titleBarStyle = "hiddenInset";
     options.trafficLightPosition = { ...DARWIN_WINDOW_BUTTON_BASE };
-    const windowIconPath = join(__dirname, "..", "..", "resources", "icon.icns");
+    const windowIconPath = join(
+      __dirname,
+      "..",
+      "..",
+      "resources",
+      "icon.icns",
+    );
     if (existsSync(windowIconPath)) {
       options.icon = windowIconPath;
     }
@@ -579,7 +594,10 @@ function syncChromeMenu() {
   }
 }
 
-function patchChromeState(win: BrowserWindow, patch: Partial<WindowChromeState>) {
+function patchChromeState(
+  win: BrowserWindow,
+  patch: Partial<WindowChromeState>,
+) {
   windowChromeState.set(win.id, { ...chromeStateFor(win.id), ...patch });
   if (BrowserWindow.getFocusedWindow()?.id === win.id) syncChromeMenu();
 }
@@ -612,7 +630,7 @@ function buildMenu() {
       submenu: [
         {
           label: "New window",
-          accelerator: "CmdOrCtrl+N",
+          accelerator: "CmdOrCtrl+Shift+N",
           click: () => {
             void createWindow();
           },
@@ -630,7 +648,7 @@ function buildMenu() {
         },
         {
           label: "New document",
-          accelerator: "CmdOrCtrl+Shift+N",
+          accelerator: "CmdOrCtrl+N",
           click: () => {
             const win = getTargetWindowForOpen();
             win?.webContents.send("md:new-document");
@@ -914,7 +932,10 @@ if (!gotLock) {
         openDialogOptions({
           properties: ["openFile"],
           filters: [
-            { name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd"] },
+            {
+              name: "Markdown",
+              extensions: ["md", "markdown", "mdown", "mkd"],
+            },
           ],
         }),
       );
@@ -937,6 +958,24 @@ if (!gotLock) {
       const dir = await validateDirPath(filePaths[0]);
       if (dir) rememberDialogDirectory(dir, true);
       return dir;
+    });
+
+    ipcMain.handle("md:known-folder", async (_e, rawId: unknown) => {
+      if (
+        rawId !== "desktop" &&
+        rawId !== "downloads" &&
+        rawId !== "documents"
+      ) {
+        return null;
+      }
+      const id: KnownFolderId = rawId;
+      let candidate: string;
+      try {
+        candidate = app.getPath(id);
+      } catch {
+        return null;
+      }
+      return validateDirPath(candidate);
     });
 
     ipcMain.handle(
@@ -986,45 +1025,52 @@ if (!gotLock) {
       }
     });
 
-    ipcMain.handle("md:write", async (_e, rawPath: unknown, rawContent: unknown) => {
-      if (typeof rawPath !== "string" || typeof rawContent !== "string") {
-        return { ok: false as const, error: "Invalid arguments" };
-      }
-      const p = resolve(rawPath);
-      if (!isMarkdownExtension(p)) {
-        return { ok: false as const, error: "Not a Markdown file" };
-      }
-      try {
-        const parent = await stat(dirname(p));
-        if (!parent.isDirectory()) {
+    ipcMain.handle(
+      "md:write",
+      async (_e, rawPath: unknown, rawContent: unknown) => {
+        if (typeof rawPath !== "string" || typeof rawContent !== "string") {
+          return { ok: false as const, error: "Invalid arguments" };
+        }
+        const p = resolve(rawPath);
+        if (!isMarkdownExtension(p)) {
+          return { ok: false as const, error: "Not a Markdown file" };
+        }
+        try {
+          const parent = await stat(dirname(p));
+          if (!parent.isDirectory()) {
+            return { ok: false as const, error: "Folder not found" };
+          }
+        } catch {
           return { ok: false as const, error: "Folder not found" };
         }
-      } catch {
-        return { ok: false as const, error: "Folder not found" };
-      }
-      try {
-        noteOwnWrite(p);
-        await writeFile(p, rawContent, "utf8");
-        ensureWatching(p);
-        if (process.platform === "darwin") {
-          app.addRecentDocument(p);
+        try {
+          noteOwnWrite(p);
+          await writeFile(p, rawContent, "utf8");
+          ensureWatching(p);
+          if (process.platform === "darwin") {
+            app.addRecentDocument(p);
+          }
+          return {
+            ok: true as const,
+            path: p,
+            dir: dirname(p),
+            dirUrl: dirToFileUrl(dirname(p)),
+            name: basename(p),
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Save failed";
+          return { ok: false as const, error: message };
         }
-        return {
-          ok: true as const,
-          path: p,
-          dir: dirname(p),
-          dirUrl: dirToFileUrl(dirname(p)),
-          name: basename(p),
-        };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Save failed";
-        return { ok: false as const, error: message };
-      }
-    });
+      },
+    );
 
     ipcMain.handle(
       "md:rename",
-      async (event, rawFrom: unknown, rawName: unknown): Promise<RenameResult> => {
+      async (
+        event,
+        rawFrom: unknown,
+        rawName: unknown,
+      ): Promise<RenameResult> => {
         if (typeof rawFrom !== "string" || typeof rawName !== "string") {
           return { ok: false, error: "Invalid arguments" };
         }

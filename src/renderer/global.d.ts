@@ -1,5 +1,6 @@
 import type {
   ColorSchemePreference,
+  KnownFolderId,
   ListMarkdownTreeResult,
   ReadResult,
   RenameResult,
@@ -13,6 +14,7 @@ declare global {
       newWindow: () => Promise<void>;
       openDialog: () => Promise<string | null>;
       openFolderDialog: () => Promise<string | null>;
+      knownFolder: (id: KnownFolderId) => Promise<string | null>;
       listMarkdownTree: (rootPath: string) => Promise<ListMarkdownTreeResult>;
       readFile: (path: string) => Promise<ReadResult>;
       writeFile: (path: string, content: string) => Promise<WriteResult>;

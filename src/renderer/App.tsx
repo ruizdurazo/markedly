@@ -48,7 +48,11 @@ import {
 import { TabStrip } from "./TabStrip";
 import appStyles from "./App.module.scss";
 import { Welcome } from "./Welcome";
-import type { ColorSchemePreference, DirTreeNode } from "../shared/types.js";
+import type {
+  ColorSchemePreference,
+  DirTreeNode,
+  KnownFolderId,
+} from "../shared/types.js";
 import { FileTreePanel } from "./FileTreePanel";
 import { TocPanel, type TocEntry } from "./TocPanel";
 import { Tooltip } from "./Tooltip";
@@ -225,6 +229,9 @@ export function App() {
     useState(false);
   const [tocEntries, setTocEntries] = useState<TocEntry[]>([]);
   const [rootFolderPath, setRootFolderPath] = useState<string | null>(null);
+  const [knownFolderPaths, setKnownFolderPaths] = useState<
+    Partial<Record<KnownFolderId, string>>
+  >({});
   const [treeNodes, setTreeNodes] = useState<DirTreeNode[]>([]);
   const [treeLoading, setTreeLoading] = useState(false);
   const [treeError, setTreeError] = useState<string | null>(null);
@@ -584,11 +591,54 @@ export function App() {
     setTreeNodes(res.tree);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const ids = ["desktop", "downloads", "documents"] as const;
+    void (async () => {
+      const entries = await Promise.all(
+        ids.map(
+          async (id) => [id, await window.markedly.knownFolder(id)] as const,
+        ),
+      );
+      if (cancelled) return;
+      const next: Partial<Record<KnownFolderId, string>> = {};
+      for (const [id, path] of entries) {
+        if (path) next[id] = path;
+      }
+      setKnownFolderPaths(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const activeLocation = useMemo(() => {
+    if (!rootFolderPath) return null;
+    const ids = ["desktop", "downloads", "documents"] as const;
+    return ids.find((id) => knownFolderPaths[id] === rootFolderPath) ?? null;
+  }, [knownFolderPaths, rootFolderPath]);
+
   const pickFolderForFileTree = useCallback(async () => {
     const p = await window.markedly.openFolderDialog();
     if (!p) return;
     await refreshFileTree(p);
   }, [refreshFileTree]);
+
+  const openKnownLocation = useCallback(
+    async (id: KnownFolderId) => {
+      const p = knownFolderPaths[id] ?? (await window.markedly.knownFolder(id));
+      if (!p) {
+        setTreeError("That folder is not available.");
+        setStatusText("That folder is not available.");
+        return;
+      }
+      setKnownFolderPaths((prev) =>
+        prev[id] === p ? prev : { ...prev, [id]: p },
+      );
+      await refreshFileTree(p);
+    },
+    [knownFolderPaths, refreshFileTree],
+  );
 
   const refreshFileTreeFromState = useCallback(async () => {
     if (!rootFolderPath) return;
@@ -761,30 +811,33 @@ export function App() {
     [],
   );
 
-  const handleEditorMarkdown = useCallback((tabId: string, markdown: string) => {
-    const cache = tabContentCacheRef.current.get(tabId);
-    if (!cache) return;
-    cache.body = markdown;
-    if (tabId === activeTabIdRef.current) {
-      const tab = tabsRef.current.find((t) => t.id === tabId);
-      const next = tab?.path ? countWords(markdown) : 0;
-      if (next !== statusWordCountRef.current) {
-        statusWordCountRef.current = next;
-        setWordCountRevision((n) => n + 1);
+  const handleEditorMarkdown = useCallback(
+    (tabId: string, markdown: string) => {
+      const cache = tabContentCacheRef.current.get(tabId);
+      if (!cache) return;
+      cache.body = markdown;
+      if (tabId === activeTabIdRef.current) {
+        const tab = tabsRef.current.find((t) => t.id === tabId);
+        const next = tab?.path ? countWords(markdown) : 0;
+        if (next !== statusWordCountRef.current) {
+          statusWordCountRef.current = next;
+          setWordCountRevision((n) => n + 1);
+        }
       }
-    }
-    if (!cache.hydrated) {
-      cache.savedBody = markdown;
-      cache.hydrated = true;
-      return;
-    }
-    const dirty = markdown !== cache.savedBody;
-    const tab = tabsRef.current.find((t) => t.id === tabId);
-    if (!tab || tab.dirty === dirty) return;
-    setTabs((prev) =>
-      prev.map((t) => (t.id === tabId ? { ...t, dirty } : t)),
-    );
-  }, []);
+      if (!cache.hydrated) {
+        cache.savedBody = markdown;
+        cache.hydrated = true;
+        return;
+      }
+      const dirty = markdown !== cache.savedBody;
+      const tab = tabsRef.current.find((t) => t.id === tabId);
+      if (!tab || tab.dirty === dirty) return;
+      setTabs((prev) =>
+        prev.map((t) => (t.id === tabId ? { ...t, dirty } : t)),
+      );
+    },
+    [],
+  );
 
   const saveActiveTab = useCallback(
     async (saveAs: boolean): Promise<boolean> => {
@@ -1704,6 +1757,10 @@ export function App() {
             onPickFolder={() => {
               void pickFolderForFileTree();
             }}
+            onOpenLocation={(id) => {
+              void openKnownLocation(id);
+            }}
+            activeLocation={activeLocation}
             onRefresh={() => {
               void refreshFileTreeFromState();
             }}
@@ -1805,9 +1862,7 @@ export function App() {
                                       handle,
                                     );
                                   } else {
-                                    markdownBodyHandlesRef.current.delete(
-                                      t.id,
-                                    );
+                                    markdownBodyHandlesRef.current.delete(t.id);
                                   }
                                 }}
                                 html={cached.html}
