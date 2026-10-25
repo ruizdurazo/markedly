@@ -38,8 +38,17 @@
   &:global(.markdown-body) > ol:first-child,
   &:global(.markdown-body) > blockquote:first-child,
   &:global(.markdown-body) > pre:first-child,
-  &:global(.markdown-body) > table:first-child {
+  &:global(.markdown-body) > table:first-child,
+  &:global(.markdown-body) > :global(.md-math):first-child {
     margin-top: 16px;
+  }
+
+  :global(.md-math) {
+    margin: 16px 0;
+    white-space: pre-wrap;
+    font-family: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+    font-size: 14px;
+    line-height: 1.5;
   }
 
   :global(.md-italic) {

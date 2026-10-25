@@ -1,5 +1,8 @@
 import { $createCodeNode, $isCodeNode } from "@lexical/code";
-import { $insertDataTransferForRichText } from "@lexical/clipboard";
+import {
+  $insertDataTransferForRichText,
+  $insertGeneratedNodes,
+} from "@lexical/clipboard";
 import {
   $insertList,
   $isListNode,
@@ -54,6 +57,8 @@ import {
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import styles from "./EditorContextMenu.module.scss";
+import { $isMathBlockNode } from "./MathBlockNode";
+import { $importMarkdownClipboard } from "./markdown-transformers";
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -68,13 +73,45 @@ function styleIcon(Icon: typeof Bold) {
   return <Icon width={16} height={16} strokeWidth={2} aria-hidden />;
 }
 
-function insertPlainText(editor: LexicalEditor, text: string) {
-  const data = new DataTransfer();
-  data.setData("text/plain", text);
+function looksLikeMarkdown(text: string): boolean {
+  if (
+    /(^|\n)[ \t]{0,3}(#{1,6}[ \t]+\S|```|~~~|>[ \t]*\S|\\\[|\\\]|\$\$)/.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  if (/(^|\n)[ \t]{0,3}(?:[-+*]|\d+[.)])[ \t]+\S/.test(text)) return true;
+  return /\*\*|__|~~|\+\+|`[^`\n]+`|\[[^\]\n]+\]\([^)\n]+\)/.test(text);
+}
+
+function inMathBlock(selection: RangeSelection): boolean {
+  const node = selection.anchor.getNode();
+  return (
+    $isMathBlockNode(node) || $findMatchingParent(node, $isMathBlockNode) != null
+  );
+}
+
+function insertClipboardText(editor: LexicalEditor, text: string) {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   editor.update(() => {
     const selection = $getSelection();
     if (selection == null) return;
-    $insertDataTransferForRichText(data, selection, editor);
+    const literal =
+      !$isRangeSelection(selection) ||
+      inCodeBlock(selection) ||
+      inMathBlock(selection) ||
+      selection.hasFormat("code") ||
+      !looksLikeMarkdown(normalized);
+    if (literal) {
+      const data = new DataTransfer();
+      data.setData("text/plain", normalized);
+      $insertDataTransferForRichText(data, selection, editor);
+      return;
+    }
+    const nodes = $importMarkdownClipboard(normalized);
+    if (nodes.length === 0) return;
+    $insertGeneratedNodes(editor, nodes, selection);
   });
 }
 
@@ -223,7 +260,7 @@ function PreserveSelectionOnRightClick() {
   return null;
 }
 
-export function PlainTextPastePlugin() {
+export function MarkdownPastePlugin() {
   const [editor] = useLexicalComposerContext();
   useEffect(() => {
     return editor.registerCommand(
@@ -231,8 +268,9 @@ export function PlainTextPastePlugin() {
       (event) => {
         if (!(event instanceof ClipboardEvent)) return false;
         const text = event.clipboardData?.getData("text/plain") ?? "";
+        if (!text) return false;
         event.preventDefault();
-        insertPlainText(editor, text);
+        insertClipboardText(editor, text);
         return true;
       },
       COMMAND_PRIORITY_HIGH,
@@ -599,7 +637,7 @@ export function EditorContextMenu({ children }: EditorContextMenuProps) {
                 editor.focus(() => {
                   void navigator.clipboard.readText().then(
                     (text) => {
-                      insertPlainText(editor, text);
+                      insertClipboardText(editor, text);
                     },
                     () => {
                       /* clipboard permission denied */

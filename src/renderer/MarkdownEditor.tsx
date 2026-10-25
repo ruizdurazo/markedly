@@ -18,10 +18,7 @@ import {
   ORDERED_LIST,
   QUOTE,
   STRIKETHROUGH,
-  TEXT_FORMAT_TRANSFORMERS,
-  TEXT_MATCH_TRANSFORMERS,
   UNORDERED_LIST,
-  type TextFormatTransformer,
   type Transformer,
 } from "@lexical/markdown";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
@@ -44,28 +41,14 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type JSX } fr
 import type { TocEntry } from "./TocPanel";
 import {
   EditorContextMenu,
-  PlainTextPastePlugin,
+  MarkdownPastePlugin,
 } from "./EditorContextMenu";
-import styles from "./MarkdownEditor.module.scss";
-
-/** CommonMark has no underline. `++text++` is the form this editor writes. */
-const UNDERLINE: TextFormatTransformer = {
-  format: ["underline"],
-  tag: "++",
-  type: "text-format",
-};
-
-const MARKDOWN_TRANSFORMERS: Transformer[] = [
-  HEADING,
-  QUOTE,
-  CHECK_LIST,
-  UNORDERED_LIST,
-  ORDERED_LIST,
-  CODE,
-  ...TEXT_FORMAT_TRANSFORMERS,
+import { MathBlockNode } from "./MathBlockNode";
+import {
+  MARKDOWN_TRANSFORMERS,
   UNDERLINE,
-  ...TEXT_MATCH_TRANSFORMERS,
-];
+} from "./markdown-transformers";
+import styles from "./MarkdownEditor.module.scss";
 
 const TYPING_SHORTCUTS: Transformer[] = [
   HEADING,
@@ -94,6 +77,7 @@ const EDITOR_NODES = [
   CodeNode,
   CodeHighlightNode,
   LinkNode,
+  MathBlockNode,
 ];
 
 const editorTheme = {
@@ -301,7 +285,7 @@ export function MarkdownEditor({
       <CheckListPlugin />
       <LinkPlugin />
       <MarkdownShortcutPlugin transformers={TYPING_SHORTCUTS} />
-      <PlainTextPastePlugin />
+      <MarkdownPastePlugin />
       <ExportOnChange onChange={onChange} />
       <OutlinePlugin isActive={isActive} onOutline={onOutline} />
       <FocusWhenActive isActive={isActive} />
