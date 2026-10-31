@@ -43,6 +43,27 @@
     margin-top: 16px;
   }
 
+  // Lexical nests by wrapping the sublist in its own item. That wrapper has
+  // no text. It is taken out of the numbering so it shows no marker and the
+  // following item keeps the next number.
+  :global(.md-nested-list) {
+    display: block;
+    list-style: none;
+    margin-top: 0;
+    margin-bottom: 0;
+
+    &:global(.md-task),
+    &:global(.md-task-checked) {
+      margin-left: 0;
+      padding-left: 0;
+
+      &::before,
+      &::after {
+        content: none;
+      }
+    }
+  }
+
   :global(.md-math) {
     margin: 16px 0;
     white-space: pre-wrap;

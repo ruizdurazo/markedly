@@ -103,6 +103,29 @@
     padding-left: 32px;
   }
 
+  // Word, Google Docs, and Pages use this outline: 1, a, i, then repeat.
+  // A numbered list under a bullet stays decimal; only nested numbers change.
+  @for $depth from 1 through 9 {
+    $marker: decimal;
+    @if $depth % 3 == 2 {
+      $marker: lower-alpha;
+    } @else if $depth % 3 == 0 {
+      $marker: lower-roman;
+    }
+    $selector: "ol";
+    @if $depth > 1 {
+      @for $step from 2 through $depth {
+        $selector: "#{$selector} ol";
+      }
+    }
+    #{$selector} {
+      list-style-type: $marker;
+      @if $marker == lower-roman {
+        padding-left: 48px;
+      }
+    }
+  }
+
   li {
     margin: 6px 0;
   }

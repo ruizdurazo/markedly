@@ -57,6 +57,10 @@ import {
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import styles from "./EditorContextMenu.module.scss";
+import {
+  $hasSelectedListItems,
+  $shiftSelectedListIndent,
+} from "./ListIndentPlugin";
 import { $isMathBlockNode } from "./MathBlockNode";
 import { $importMarkdownClipboard } from "./markdown-transformers";
 
@@ -216,6 +220,88 @@ function normalizeLinkUrl(raw: string): string | null {
   const url = raw.trim();
   if (!url || /^(javascript|data):/i.test(url)) return null;
   return url;
+}
+
+function focusedChecklistItem(root: HTMLElement): HTMLElement | null {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !root.contains(active)) return null;
+  if (active === root) return null;
+  if (
+    !active.classList.contains("md-task") &&
+    !active.classList.contains("md-task-checked")
+  ) {
+    return null;
+  }
+  return active;
+}
+
+function selectionInside(root: HTMLElement): boolean {
+  const selection = window.getSelection();
+  if (selection == null || selection.rangeCount === 0) return false;
+  const node = selection.anchorNode;
+  return node != null && root.contains(node);
+}
+
+/**
+ * A checklist row is focusable. Focusing the editor root from that row, which
+ * the checklist plugin does for ordinary keys and for a right-click release,
+ * collapses a selection that covers the whole item, so copy and cut see nothing.
+ */
+function PreserveChecklistSelection() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const root = editor.getRootElement();
+      if (root == null || focusedChecklistItem(root) == null) return;
+      if (!selectionInside(root)) return;
+      const key = event.key.toLowerCase();
+      const copyOrCut =
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        (key === "c" || key === "x");
+      const indent =
+        key === "tab" && !event.metaKey && !event.ctrlKey && !event.altKey;
+      if (!copyOrCut && !indent) return;
+      const domSelection = window.getSelection();
+      if (copyOrCut && (domSelection == null || domSelection.isCollapsed)) return;
+      if (indent) {
+        let inList = false;
+        editor.getEditorState().read(() => {
+          inList = $hasSelectedListItems();
+        });
+        if (!inList) return;
+        event.preventDefault();
+        event.stopPropagation();
+        editor.update(() => {
+          $shiftSelectedListIndent(event.shiftKey);
+        });
+        return;
+      }
+      event.stopPropagation();
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      if (event.button !== 2) return;
+      const root = editor.getRootElement();
+      if (root == null || focusedChecklistItem(root) == null) return;
+      const domSelection = window.getSelection();
+      if (
+        domSelection == null ||
+        domSelection.isCollapsed ||
+        !selectionInside(root)
+      ) {
+        return;
+      }
+      event.stopPropagation();
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("pointerup", onPointerUp, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("pointerup", onPointerUp, true);
+    };
+  }, [editor]);
+  return null;
 }
 
 function PreserveSelectionOnRightClick() {
@@ -603,6 +689,7 @@ export function EditorContextMenu({ children }: EditorContextMenuProps) {
   return (
     <ContextMenu.Root>
       <PreserveSelectionOnRightClick />
+      <PreserveChecklistSelection />
       <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content className={styles.content}>

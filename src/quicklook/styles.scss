@@ -152,6 +152,28 @@ ol {
   padding-left: 24px;
 }
 
+// Same outline as the in-app preview: 1, a, i, then repeat.
+@for $depth from 1 through 9 {
+  $marker: decimal;
+  @if $depth % 3 == 2 {
+    $marker: lower-alpha;
+  } @else if $depth % 3 == 0 {
+    $marker: lower-roman;
+  }
+  $selector: "ol";
+  @if $depth > 1 {
+    @for $step from 2 through $depth {
+      $selector: "#{$selector} ol";
+    }
+  }
+  #{$selector} {
+    list-style-type: $marker;
+    @if $marker == lower-roman {
+      padding-left: 48px;
+    }
+  }
+}
+
 // Task items are normal list items plus a checkbox, so the marker has to go.
 // Box treatment matches the in-app preview in markdown-global.scss.
 .task-list-item {

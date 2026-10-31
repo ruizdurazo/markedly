@@ -43,6 +43,7 @@ import {
   EditorContextMenu,
   MarkdownPastePlugin,
 } from "./EditorContextMenu";
+import { ListIndentPlugin } from "./ListIndentPlugin";
 import { MathBlockNode } from "./MathBlockNode";
 import {
   MARKDOWN_TRANSFORMERS,
@@ -85,6 +86,9 @@ const editorTheme = {
   list: {
     listitemChecked: "md-task-checked",
     listitemUnchecked: "md-task",
+    nested: {
+      listitem: "md-nested-list",
+    },
   },
   text: {
     italic: "md-italic",
@@ -283,6 +287,7 @@ export function MarkdownEditor({
       <HistoryPlugin />
       <ListPlugin />
       <CheckListPlugin />
+      <ListIndentPlugin />
       <LinkPlugin />
       <MarkdownShortcutPlugin transformers={TYPING_SHORTCUTS} />
       <MarkdownPastePlugin />
