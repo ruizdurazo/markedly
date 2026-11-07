@@ -52,6 +52,7 @@ import type {
   ColorSchemePreference,
   DirTreeNode,
   KnownFolderId,
+  MovedTab,
 } from "../shared/types.js";
 import { FileTreePanel } from "./FileTreePanel";
 import { TocPanel, type TocEntry } from "./TocPanel";
@@ -431,6 +432,77 @@ export function App() {
     [clearBaseHref, getActiveMarkdownRoot, setBaseHref],
   );
 
+  const adoptMovedTab = useCallback(
+    async (moved: MovedTab) => {
+      const id = activeTabIdRef.current;
+      const withFrontmatter =
+        moved.frontmatterRaw == null
+          ? moved.body
+          : `${moved.frontmatterRaw}\n${moved.body}`;
+      const split = splitFrontmatter(withFrontmatter);
+      const metadataHtml =
+        split.metadata && Object.keys(split.metadata).length > 0
+          ? buildMetadataTableHtml(split.metadata, formatMetadataCell)
+          : "";
+      const html = buildPreviewHtml(metadataHtml, moved.body);
+      tabContentCacheRef.current.set(id, {
+        body: moved.body,
+        savedBody: moved.savedBody,
+        frontmatterRaw: moved.frontmatterRaw,
+        metadataHtml,
+        html,
+        dirUrl: moved.dirUrl,
+        path: moved.path,
+        generation: 1,
+        // A dirty tab must keep its saved baseline. A clean tab absorbs the
+        // editor's first export so merely opening it does not look unsaved.
+        hydrated: moved.dirty,
+      });
+      ignoreScrollRef.current = true;
+      if (moved.dirUrl) setBaseHref(moved.dirUrl);
+      else clearBaseHref();
+      flushSync(() => {
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === id
+              ? {
+                  ...t,
+                  path: moved.path,
+                  stale: moved.stale,
+                  dirty: moved.dirty,
+                  document: true,
+                  editing: moved.editing,
+                  scrollTop: moved.scrollTop,
+                }
+              : t,
+          ),
+        );
+        setMarkdownHtml(html);
+        setShowWelcome(false);
+        setStatusText(
+          moved.stale && moved.path
+            ? `${moved.path} changed on disk. Save will overwrite it.`
+            : moved.path || "Untitled",
+        );
+      });
+      await window.markedly.showWindow();
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = moved.scrollTop;
+          }
+          requestAnimationFrame(() => {
+            ignoreScrollRef.current = false;
+            resolve();
+          });
+        });
+      });
+    },
+    [clearBaseHref, setBaseHref],
+  );
+  const adoptMovedTabRef = useRef(adoptMovedTab);
+  adoptMovedTabRef.current = adoptMovedTab;
+
   const applyActiveTabToView = useCallback(async () => {
     const t = getActiveTab();
     if (!t) return;
@@ -749,17 +821,10 @@ export function App() {
     [applyActiveTabToView],
   );
 
-  const closeTab = useCallback(
-    (tabId: string) => {
+  const removeTab = useCallback(
+    async (tabId: string) => {
       const prev = tabsRef.current;
-      const closing = prev.find((t) => t.id === tabId);
-      if (!closing) return;
-      if (closing.dirty) {
-        const discard = window.confirm(
-          `Discard unsaved changes to "${documentName(closing)}"?`,
-        );
-        if (!discard) return;
-      }
+      if (!prev.some((t) => t.id === tabId)) return;
       if (prev.length <= 1) {
         skipUnloadPromptRef.current = true;
         window.close();
@@ -778,9 +843,81 @@ export function App() {
         setTabs(newTabs);
         setActiveTabId(nextId);
       });
-      void applyActiveTabToView();
+      await applyActiveTabToView();
     },
     [applyActiveTabToView],
+  );
+
+  const closeTab = useCallback(
+    (tabId: string) => {
+      const closing = tabsRef.current.find((t) => t.id === tabId);
+      if (!closing) return;
+      if (closing.dirty) {
+        const discard = window.confirm(
+          `Discard unsaved changes to "${documentName(closing)}"?`,
+        );
+        if (!discard) return;
+      }
+      removeTab(tabId);
+    },
+    [removeTab],
+  );
+
+  const openTabInNewWindow = useCallback(
+    async (tabId: string) => {
+      const tab = tabsRef.current.find((t) => t.id === tabId);
+      if (!tab) return;
+      const liveCache = tabContentCacheRef.current.get(tab.id);
+      let source = liveCache;
+      let dirty = tab.dirty;
+      let stale = tab.stale;
+      if (tab.document && !source && tab.path) {
+        const result = await window.markedly.readFile(tab.path);
+        if (!tabsRef.current.some((t) => t.id === tabId)) return;
+        if (!result.ok) {
+          setStatusText(result.error);
+          return;
+        }
+        const split = splitFrontmatter(result.content);
+        source = {
+          body: split.body,
+          savedBody: split.body,
+          frontmatterRaw: split.frontmatterRaw,
+          metadataHtml: "",
+          html: "",
+          dirUrl: result.dirUrl,
+          path: result.path,
+          generation: 1,
+          hydrated: false,
+        };
+        dirty = false;
+        stale = false;
+      }
+      if (tab.document && !source) {
+        setStatusText("Could not open a new window.");
+        return;
+      }
+      const payload: MovedTab = {
+        document: tab.document,
+        path: source?.path ?? tab.path,
+        body: source?.body ?? "",
+        savedBody: source?.savedBody ?? "",
+        frontmatterRaw: source?.frontmatterRaw ?? null,
+        dirUrl: source?.dirUrl ?? "",
+        dirty,
+        editing: tab.editing,
+        stale,
+        scrollTop: tab.scrollTop,
+      };
+      const windowId = await window.markedly.openTabInNewWindow(payload);
+      if (windowId == null) {
+        setStatusText("Could not open a new window.");
+        return;
+      }
+      await removeTab(tabId);
+      await window.markedly.focusWindow(windowId);
+    },
+    [removeTab],
   );
 
   const reorderTabsByIds = useCallback((orderedIds: string[]) => {
@@ -1123,6 +1260,19 @@ export function App() {
     markdownHtml,
     showWelcome,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const moved = await window.markedly.takeMovedTab();
+      if (cancelled || !moved) return;
+      if (moved.document) await adoptMovedTabRef.current(moved);
+      else await window.markedly.showWindow();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const unsubs = [
@@ -1798,6 +1948,9 @@ export function App() {
                 onNew={addTab}
                 onRenameFile={renameTabFile}
                 onRenameUnavailable={handleRenameUnavailable}
+                onOpenInNewWindow={(tabId) => {
+                  void openTabInNewWindow(tabId);
+                }}
               />
             ) : null}
 

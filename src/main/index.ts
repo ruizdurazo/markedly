@@ -23,6 +23,7 @@ import type {
   DirTreeNode,
   KnownFolderId,
   ListMarkdownTreeResult,
+  MovedTab,
   RenameResult,
   ResolvedMdLink,
 } from "../shared/types.js";
@@ -52,6 +53,9 @@ function isOwnWriteEcho(filePath: string): boolean {
   return false;
 }
 let pendingOpenPath: string | null = null;
+/** Tab payload waiting for the renderer of a window opened from “Open in New Window”. */
+const pendingMovedTabs = new Map<number, MovedTab>();
+const deferredShowTimers = new Map<number, ReturnType<typeof setTimeout>>();
 /** First BrowserWindow created in this session; launch argv is delivered only to this window once. */
 let firstCreatedWindowId: number | null = null;
 /** Whether each window has at least one open file or untitled document. */
@@ -403,7 +407,65 @@ function isColorSchemePreference(x: unknown): x is ColorSchemePreference {
   return x === "system" || x === "light" || x === "dark";
 }
 
-function createWindow(): BrowserWindow {
+function isMovedTab(raw: unknown): raw is MovedTab {
+  if (!raw || typeof raw !== "object") return false;
+  const tab = raw as Record<string, unknown>;
+  return (
+    typeof tab.document === "boolean" &&
+    (tab.path === null || typeof tab.path === "string") &&
+    typeof tab.body === "string" &&
+    typeof tab.savedBody === "string" &&
+    (tab.frontmatterRaw === null || typeof tab.frontmatterRaw === "string") &&
+    typeof tab.dirUrl === "string" &&
+    typeof tab.dirty === "boolean" &&
+    typeof tab.editing === "boolean" &&
+    typeof tab.stale === "boolean" &&
+    typeof tab.scrollTop === "number" &&
+    Number.isFinite(tab.scrollTop)
+  );
+}
+
+function showAndFocusWindow(win: BrowserWindow) {
+  const timer = deferredShowTimers.get(win.id);
+  if (timer != null) {
+    clearTimeout(timer);
+    deferredShowTimers.delete(win.id);
+  }
+  if (win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.moveTop();
+  if (process.platform === "darwin") app.focus({ steal: true });
+  win.focus();
+}
+
+function scheduleDeferredShow(win: BrowserWindow) {
+  const timer = setTimeout(() => {
+    deferredShowTimers.delete(win.id);
+    if (!win.isDestroyed() && !win.isVisible()) showAndFocusWindow(win);
+  }, 5000);
+  deferredShowTimers.set(win.id, timer);
+}
+
+/**
+ * If the source window closes just as the new one appears, macOS can hand
+ * focus back to another window. Pull focus forward once, then stop watching.
+ */
+function refocusAfterSourceCloses(source: BrowserWindow, next: BrowserWindow) {
+  const onClosed = () => {
+    if (!next.isDestroyed() && next.isVisible()) showAndFocusWindow(next);
+  };
+  source.once("closed", onClosed);
+  const detach = () => {
+    setTimeout(() => {
+      if (!source.isDestroyed()) source.removeListener("closed", onClosed);
+    }, 600);
+  };
+  if (next.isVisible()) detach();
+  else next.once("show", detach);
+}
+
+function createWindow(launch?: { deferShow?: boolean }): BrowserWindow {
   const options: Electron.BrowserWindowConstructorOptions = {
     width: 960,
     height: 740,
@@ -442,7 +504,16 @@ function createWindow(): BrowserWindow {
     syncNewTabMenuEnabled();
     syncChromeMenu();
   });
+  const deferShow = launch?.deferShow === true;
+  if (deferShow) scheduleDeferredShow(win);
+
   win.on("closed", () => {
+    const timer = deferredShowTimers.get(win.id);
+    if (timer != null) {
+      clearTimeout(timer);
+      deferredShowTimers.delete(win.id);
+    }
+    pendingMovedTabs.delete(win.id);
     windowHasOpenDocument.delete(win.id);
     windowChromeState.delete(win.id);
     if (win.id === firstCreatedWindowId) {
@@ -460,10 +531,10 @@ function createWindow(): BrowserWindow {
     void win.loadFile(join(__dirname, "../renderer/index.html"));
   }
   win.once("ready-to-show", () => {
-    win.show();
     if (process.platform === "darwin") {
       syncDarwinWindowButtonPositionToPageZoom(win);
     }
+    if (!deferShow) win.show();
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -921,6 +992,63 @@ if (!gotLock) {
 
     ipcMain.handle("md:new-window", () => {
       void createWindow();
+    });
+
+    ipcMain.handle("md:open-tab-in-new-window", async (event, raw: unknown) => {
+      if (!isMovedTab(raw)) return false;
+      const tab: MovedTab = {
+        ...raw,
+        scrollTop: Math.max(0, raw.scrollTop),
+      };
+      if (tab.path) {
+        const validated = await validateMdPath(tab.path);
+        if (validated && isMarkdownExtension(validated)) {
+          tab.path = validated;
+          tab.dirUrl = dirToFileUrl(dirname(validated));
+          ensureWatching(validated);
+          if (process.platform === "darwin") app.addRecentDocument(validated);
+        }
+      }
+      const win = createWindow({ deferShow: true });
+      pendingMovedTabs.set(win.id, tab);
+      const source = BrowserWindow.fromWebContents(event.sender);
+      if (source && source.id !== win.id) refocusAfterSourceCloses(source, win);
+      return win.id;
+    });
+
+    ipcMain.handle("md:focus-window", (_event, rawId: unknown) => {
+      if (typeof rawId !== "number") return;
+      const win = BrowserWindow.fromId(rawId);
+      if (!win || win.isDestroyed()) return;
+      const focusAgain = () => {
+        setTimeout(() => {
+          if (!win.isDestroyed() && win.isVisible()) showAndFocusWindow(win);
+        }, 200);
+      };
+      if (win.isVisible()) {
+        showAndFocusWindow(win);
+        focusAgain();
+        return;
+      }
+      win.once("show", () => {
+        if (win.isDestroyed()) return;
+        showAndFocusWindow(win);
+        focusAgain();
+      });
+    });
+
+    ipcMain.handle("md:take-moved-tab", (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return null;
+      const tab = pendingMovedTabs.get(win.id) ?? null;
+      if (tab) pendingMovedTabs.delete(win.id);
+      return tab;
+    });
+
+    ipcMain.handle("md:show-window", (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win) return;
+      showAndFocusWindow(win);
     });
 
     ipcMain.handle("md:open-dialog", async (event) => {

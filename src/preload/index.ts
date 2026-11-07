@@ -3,6 +3,7 @@ import type {
   ColorSchemePreference,
   KnownFolderId,
   ListMarkdownTreeResult,
+  MovedTab,
   ReadResult,
   RenameResult,
   ResolvedMdLink,
@@ -11,6 +12,15 @@ import type {
 
 const api = {
   newWindow: () => ipcRenderer.invoke("md:new-window") as Promise<void>,
+  openTabInNewWindow: (tab: MovedTab) =>
+    ipcRenderer.invoke("md:open-tab-in-new-window", tab) as Promise<
+      number | null
+    >,
+  focusWindow: (windowId: number) =>
+    ipcRenderer.invoke("md:focus-window", windowId) as Promise<void>,
+  takeMovedTab: () =>
+    ipcRenderer.invoke("md:take-moved-tab") as Promise<MovedTab | null>,
+  showWindow: () => ipcRenderer.invoke("md:show-window") as Promise<void>,
   openDialog: () =>
     ipcRenderer.invoke("md:open-dialog") as Promise<string | null>,
   openFolderDialog: () =>

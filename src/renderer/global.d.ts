@@ -2,6 +2,7 @@ import type {
   ColorSchemePreference,
   KnownFolderId,
   ListMarkdownTreeResult,
+  MovedTab,
   ReadResult,
   RenameResult,
   ResolvedMdLink,
@@ -12,6 +13,10 @@ declare global {
   interface Window {
     markedly: {
       newWindow: () => Promise<void>;
+      openTabInNewWindow: (tab: MovedTab) => Promise<number | null>;
+      focusWindow: (windowId: number) => Promise<void>;
+      takeMovedTab: () => Promise<MovedTab | null>;
+      showWindow: () => Promise<void>;
       openDialog: () => Promise<string | null>;
       openFolderDialog: () => Promise<string | null>;
       knownFolder: (id: KnownFolderId) => Promise<string | null>;

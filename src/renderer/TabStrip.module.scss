@@ -146,7 +146,7 @@
 
 .menuContent {
   z-index: 40;
-  min-width: 160px;
+  min-width: 192px;
   max-height: min(
     90vh,
     var(--radix-context-menu-content-available-height, 90vh)

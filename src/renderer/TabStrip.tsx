@@ -20,6 +20,7 @@ type TabStripProps = {
   onNew: () => void;
   onRenameFile: (tabId: string, nextName: string) => Promise<boolean>;
   onRenameUnavailable: (tabId: string) => void;
+  onOpenInNewWindow: (tabId: string) => void;
 };
 
 const DRAG_THRESHOLD_PX = 6;
@@ -137,6 +138,7 @@ export function TabStrip({
   onNew,
   onRenameFile,
   onRenameUnavailable,
+  onOpenInNewWindow,
 }: TabStripProps) {
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef(tabs);
@@ -651,6 +653,12 @@ export function TabStrip({
                     onSelect={() => beginRename(tab)}
                   >
                     Rename
+                  </ContextMenu.Item>
+                  <ContextMenu.Item
+                    className={styles.menuItem}
+                    onSelect={() => onOpenInNewWindow(tab.id)}
+                  >
+                    Open in new window
                   </ContextMenu.Item>
                   <ContextMenu.Item
                     className={styles.menuItem}

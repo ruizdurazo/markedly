@@ -75,3 +75,18 @@ export type KnownFolderId = "desktop" | "downloads" | "documents";
 
 /** In-app appearance: OS-driven, forced light, or forced dark. */
 export type ColorSchemePreference = "system" | "light" | "dark";
+
+/** Tab state carried into a newly opened window. */
+export type MovedTab = {
+  /** False for a blank tab that is not a file or untitled document yet. */
+  document: boolean;
+  path: string | null;
+  body: string;
+  savedBody: string;
+  frontmatterRaw: string | null;
+  dirUrl: string;
+  dirty: boolean;
+  editing: boolean;
+  stale: boolean;
+  scrollTop: number;
+};
