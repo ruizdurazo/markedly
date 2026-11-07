@@ -5,7 +5,6 @@
   justify-content: center;
   text-align: center;
   padding: 32px;
-  -webkit-app-region: no-drag;
 
   h1 {
     font-family: "ITC Souvenir Std";
@@ -48,7 +47,6 @@
   border: none;
   background: var(--foreground);
   color: var(--background);
-  -webkit-app-region: no-drag;
 
   &:hover {
     background: color-mix(in srgb, var(--foreground) 85%, transparent);
@@ -76,7 +74,6 @@
   border: none;
   background: transparent;
   color: var(--muted);
-  -webkit-app-region: no-drag;
 
   &:hover {
     color: var(--foreground);

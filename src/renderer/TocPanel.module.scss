@@ -73,6 +73,9 @@
   overflow: auto;
   margin: 0 -4px;
   padding: 0 4px;
+  // Keep scrolled headings from inheriting the panel's no-drag region.
+  // Chromium does not clip that region, so it would cover the title bar.
+  -webkit-app-region: initial;
 }
 
 .empty {

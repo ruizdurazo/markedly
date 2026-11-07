@@ -4,7 +4,6 @@
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  -webkit-app-region: no-drag;
 }
 
 .bodyRow {
@@ -275,6 +274,11 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  // -webkit-app-region inherits, and Chromium does not clip those regions to
+  // this scrollport. A no-drag ancestor would mark every paragraph, and once
+  // the document scrolls those boxes cover the title bar so a click selects
+  // text instead of dragging the window. `initial` stops the inheritance.
+  -webkit-app-region: initial;
 }
 
 .main {
