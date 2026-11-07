@@ -204,7 +204,7 @@ function OutlinePlugin({
 
 function FocusWhenActive({ isActive }: { isActive: boolean }) {
   const [editor] = useLexicalComposerContext();
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isActive) return;
     const root = editor.getRootElement();
     if (!root) return;
@@ -215,7 +215,7 @@ function FocusWhenActive({ isActive }: { isActive: boolean }) {
     ) {
       return;
     }
-    root.focus();
+    root.focus({ preventScroll: true });
   }, [editor, isActive]);
   return null;
 }

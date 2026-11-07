@@ -29,6 +29,11 @@ import {
   fingerprintString,
   scrollRangeIntoView,
 } from "./lib/find-in-markdown-root";
+import {
+  applyScrollAnchor,
+  captureScrollAnchor,
+  type ScrollAnchor,
+} from "./lib/scroll-anchor";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { MarkdownBody, type MarkdownBodyHandle } from "./MarkdownBody";
 import statusStyles from "./StatusBar.module.scss";
@@ -262,6 +267,24 @@ export function App() {
   const showWelcomeRef = useRef(showWelcome);
   showWelcomeRef.current = showWelcome;
   const ignoreScrollRef = useRef(false);
+  const scrollSuppressGenerationRef = useRef(0);
+  const pendingScrollAnchorRef = useRef<ScrollAnchor | null>(null);
+  const activePaneRef = useRef<HTMLDivElement | null>(null);
+  const restoreModeScrollRef = useRef<() => void>(() => {});
+  const suppressScrollRecording = () => {
+    scrollSuppressGenerationRef.current += 1;
+    ignoreScrollRef.current = true;
+  };
+  const setActivePane = useCallback((el: HTMLDivElement | null) => {
+    if (el) activePaneRef.current = el;
+  }, []);
+  const rememberScrollAnchor = () => {
+    const sc = scrollContainerRef.current;
+    if (!sc) return;
+    const scope = activePaneRef.current ?? sc;
+    suppressScrollRecording();
+    pendingScrollAnchorRef.current = captureScrollAnchor(sc, scope);
+  };
   const baseElRef = useRef<HTMLBaseElement | null>(null);
   const skipUnloadPromptRef = useRef(false);
   const saveLockRef = useRef(false);
@@ -389,7 +412,7 @@ export function App() {
         hydrated: false,
       });
 
-      ignoreScrollRef.current = true;
+      suppressScrollRecording();
       setTabs((prev) =>
         prev.map((t) =>
           t.id === loadingTabId
@@ -458,7 +481,7 @@ export function App() {
         // editor's first export so merely opening it does not look unsaved.
         hydrated: moved.dirty,
       });
-      ignoreScrollRef.current = true;
+      suppressScrollRecording();
       if (moved.dirUrl) setBaseHref(moved.dirUrl);
       else clearBaseHref();
       flushSync(() => {
@@ -508,7 +531,7 @@ export function App() {
     if (!t) return;
     const cached = tabContentCacheRef.current.get(t.id);
     const showCached = () => {
-      ignoreScrollRef.current = true;
+      suppressScrollRecording();
       if (cached?.dirUrl) setBaseHref(cached.dirUrl);
       else clearBaseHref();
       setMarkdownHtml(cached?.html ?? "");
@@ -529,7 +552,7 @@ export function App() {
       });
     };
     if (!t.document || !cached) {
-      ignoreScrollRef.current = true;
+      suppressScrollRecording();
       setStatusText("");
       setShowWelcome(true);
       setMarkdownHtml("");
@@ -561,7 +584,7 @@ export function App() {
           const fromId = activeTabIdRef.current;
           const sc = scrollContainerRef.current?.scrollTop ?? 0;
           const id = newTabId();
-          ignoreScrollRef.current = true;
+          suppressScrollRecording();
           flushSync(() => {
             setTabs((prev) =>
               prev
@@ -590,7 +613,7 @@ export function App() {
         }
         const fromId = activeTabIdRef.current;
         const sc = scrollContainerRef.current?.scrollTop ?? 0;
-        ignoreScrollRef.current = true;
+        suppressScrollRecording();
         flushSync(() => {
           setTabs((prev) =>
             prev.map((t) => (t.id === fromId ? { ...t, scrollTop: sc } : t)),
@@ -612,7 +635,7 @@ export function App() {
         const fromId = activeTabIdRef.current;
         const sc = scrollContainerRef.current?.scrollTop ?? 0;
         const id = newTabId();
-        ignoreScrollRef.current = true;
+        suppressScrollRecording();
         flushSync(() => {
           setTabs((prev) =>
             prev
@@ -634,7 +657,7 @@ export function App() {
       const fromId = activeTabIdRef.current;
       const sc = scrollContainerRef.current?.scrollTop ?? 0;
       const id = newTabId();
-      ignoreScrollRef.current = true;
+      suppressScrollRecording();
       flushSync(() => {
         setTabs((prev) =>
           prev
@@ -792,7 +815,7 @@ export function App() {
     const fromId = activeTabIdRef.current;
     const sc = scrollContainerRef.current?.scrollTop ?? 0;
     const id = newTabId();
-    ignoreScrollRef.current = true;
+    suppressScrollRecording();
     flushSync(() => {
       setTabs((prev) =>
         prev
@@ -809,7 +832,7 @@ export function App() {
       if (!tabsRef.current.some((t) => t.id === tabId)) return;
       const fromId = activeTabIdRef.current;
       const sc = scrollContainerRef.current?.scrollTop ?? 0;
-      ignoreScrollRef.current = true;
+      suppressScrollRecording();
       flushSync(() => {
         setTabs((prev) =>
           prev.map((t) => (t.id === fromId ? { ...t, scrollTop: sc } : t)),
@@ -1041,6 +1064,7 @@ export function App() {
       );
       return;
     }
+    rememberScrollAnchor();
     setTabs((prev) =>
       prev.map((t) => (t.id === tab.id ? { ...t, editing: true } : t)),
     );
@@ -1064,6 +1088,7 @@ export function App() {
     if (cache && activeTabIdRef.current === tab.id) {
       setMarkdownHtml(cache.html);
     }
+    rememberScrollAnchor();
     setTabs((prev) =>
       prev.map((t) => (t.id === tab.id ? { ...t, editing: false } : t)),
     );
@@ -1097,7 +1122,7 @@ export function App() {
     const sc = scrollContainerRef.current?.scrollTop ?? 0;
     const id = newTabId();
     tabContentCacheRef.current.set(id, emptyDocumentCache());
-    ignoreScrollRef.current = true;
+    suppressScrollRecording();
     flushSync(() => {
       setTabs((prev) =>
         prev
@@ -1467,6 +1492,119 @@ export function App() {
     sc.addEventListener("scroll", onScroll, { passive: true });
     return () => sc.removeEventListener("scroll", onScroll);
   }, [getActiveTab, activeTabId]);
+
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current;
+    const sc = scrollContainerRef.current;
+    if (!anchor || !sc) return;
+    const generation = scrollSuppressGenerationRef.current;
+    const scopeForWatch = activePaneRef.current ?? sc;
+
+    let stopped = false;
+    let settleTimer = 0;
+    let maxTimer = 0;
+    let restoreFrame = 0;
+
+    const releaseIgnore = () => {
+      if (scrollSuppressGenerationRef.current !== generation) return;
+      ignoreScrollRef.current = false;
+    };
+
+    const onUserScroll = (event: Event) => {
+      if (event instanceof KeyboardEvent) {
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
+        if (
+          event.key !== "ArrowDown" &&
+          event.key !== "ArrowUp" &&
+          event.key !== "PageDown" &&
+          event.key !== "PageUp" &&
+          event.key !== "Home" &&
+          event.key !== "End" &&
+          event.key !== " "
+        ) {
+          return;
+        }
+      }
+      stop();
+    };
+
+    const onScrollbarPointerDown = (event: PointerEvent) => {
+      if (event.target === sc) stop();
+    };
+
+    let observer: ResizeObserver;
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      cancelAnimationFrame(restoreFrame);
+      observer.disconnect();
+      window.clearTimeout(settleTimer);
+      window.clearTimeout(maxTimer);
+      sc.removeEventListener("wheel", onUserScroll);
+      sc.removeEventListener("touchmove", onUserScroll);
+      sc.removeEventListener("keydown", onUserScroll);
+      sc.removeEventListener("pointerdown", onScrollbarPointerDown);
+      if (pendingScrollAnchorRef.current === anchor) {
+        pendingScrollAnchorRef.current = null;
+      }
+      if (restoreModeScrollRef.current === apply) {
+        restoreModeScrollRef.current = () => {};
+      }
+      releaseIgnore();
+    };
+
+    const apply = () => {
+      if (stopped) return;
+      if (scrollSuppressGenerationRef.current !== generation) {
+        stop();
+        return;
+      }
+      const parent = scrollContainerRef.current;
+      const scope = activePaneRef.current ?? parent;
+      const current = pendingScrollAnchorRef.current;
+      if (!parent || !scope || !current) return;
+      ignoreScrollRef.current = true;
+      const top = applyScrollAnchor(parent, scope, current);
+      const id = activeTabIdRef.current;
+      setTabs((prev) => {
+        const tab = prev.find((t) => t.id === id);
+        if (!tab || tab.scrollTop === top) return prev;
+        return prev.map((t) => (t.id === id ? { ...t, scrollTop: top } : t));
+      });
+      releaseIgnore();
+    };
+
+    observer = new ResizeObserver(() => {
+      if (stopped) return;
+      apply();
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(stop, 500);
+    });
+
+    restoreModeScrollRef.current = apply;
+    apply();
+    restoreFrame = requestAnimationFrame(() => {
+      apply();
+    });
+    observer.observe(scopeForWatch);
+    const scrolled = sc.firstElementChild;
+    if (scrolled instanceof HTMLElement && scrolled !== scopeForWatch) {
+      observer.observe(scrolled);
+    }
+    sc.addEventListener("wheel", onUserScroll, { passive: true });
+    sc.addEventListener("touchmove", onUserScroll, { passive: true });
+    sc.addEventListener("keydown", onUserScroll);
+    sc.addEventListener("pointerdown", onScrollbarPointerDown);
+    maxTimer = window.setTimeout(stop, 4000);
+
+    return () => {
+      stop();
+    };
+  }, [activeEditing, activeTabId]);
+
+  useEffect(() => {
+    restoreModeScrollRef.current();
+  }, [activeEditing, activeTabId]);
 
   const tabStripTabs = useMemo(
     () =>
@@ -1983,6 +2121,7 @@ export function App() {
                         return (
                           <div
                             key={t.id}
+                            ref={isActive ? setActivePane : undefined}
                             className={
                               isActive
                                 ? appStyles.markdownPaneActive
