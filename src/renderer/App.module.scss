@@ -256,9 +256,21 @@
   color: var(--foreground);
   font-size: 13px;
   line-height: 20px;
+  user-select: none;
 
   &::placeholder {
     color: var(--muted);
+    user-select: none;
+  }
+
+  &::selection {
+    background: transparent;
+    color: inherit;
+  }
+
+  &[data-query-selected]::selection {
+    background: Highlight;
+    color: HighlightText;
   }
 
   &:focus {

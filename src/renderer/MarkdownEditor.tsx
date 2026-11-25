@@ -33,11 +33,25 @@ import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $isHeadingNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
 import {
+  $createRangeSelectionFromDom,
   $getRoot,
   $isElementNode,
+  $isRangeSelection,
+  $setSelection,
+  SKIP_SCROLL_INTO_VIEW_TAG,
+  SKIP_SELECTION_FOCUS_TAG,
   type LexicalNode,
 } from "lexical";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type JSX } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type JSX,
+} from "react";
 import type { TocEntry } from "./TocPanel";
 import {
   EditorContextMenu,
@@ -102,9 +116,16 @@ type MarkdownEditorProps = {
   initialMarkdown: string;
   metadataHtml: string;
   isActive: boolean;
+  /** Skip the automatic caret focus while a document selection is being restored. */
+  suspendAutoFocus: boolean;
   onChange: (markdown: string) => void;
   onOutline: (entries: TocEntry[]) => void;
   onRoot: (root: HTMLDivElement | null) => void;
+};
+
+export type MarkdownEditorHandle = {
+  /** Point Lexical at the DOM selection when it sits inside the editor. */
+  adoptDocumentSelection: (focus: boolean) => void;
 };
 
 function collectHeadingEntries(node: LexicalNode, entries: TocEntry[]) {
@@ -202,10 +223,16 @@ function OutlinePlugin({
   return null;
 }
 
-function FocusWhenActive({ isActive }: { isActive: boolean }) {
+function FocusWhenActive({
+  isActive,
+  suspendAutoFocus,
+}: {
+  isActive: boolean;
+  suspendAutoFocus: boolean;
+}) {
   const [editor] = useLexicalComposerContext();
   useLayoutEffect(() => {
-    if (!isActive) return;
+    if (!isActive || suspendAutoFocus) return;
     const root = editor.getRootElement();
     if (!root) return;
     const active = document.activeElement;
@@ -216,18 +243,71 @@ function FocusWhenActive({ isActive }: { isActive: boolean }) {
       return;
     }
     root.focus({ preventScroll: true });
-  }, [editor, isActive]);
+  }, [editor, isActive, suspendAutoFocus]);
   return null;
 }
 
-export function MarkdownEditor({
-  initialMarkdown,
-  metadataHtml,
-  isActive,
-  onChange,
-  onOutline,
-  onRoot,
-}: MarkdownEditorProps) {
+const EditorSelectionHandle = forwardRef<MarkdownEditorHandle>(
+  function EditorSelectionHandle(_, ref) {
+    const [editor] = useLexicalComposerContext();
+    useImperativeHandle(
+      ref,
+      () => ({
+        adoptDocumentSelection(focus: boolean) {
+          const root = editor.getRootElement();
+          const sel = window.getSelection();
+          if (!root || !sel || sel.rangeCount === 0) return;
+          const range = sel.getRangeAt(0);
+          if (
+            !root.contains(range.startContainer) ||
+            !root.contains(range.endContainer)
+          ) {
+            return;
+          }
+          if (focus) {
+            root.focus({ preventScroll: true });
+            const live = window.getSelection();
+            if (!live) return;
+            live.removeAllRanges();
+            live.addRange(range);
+          }
+          editor.update(
+            () => {
+              const next = $createRangeSelectionFromDom(
+                window.getSelection(),
+                editor,
+              );
+              if ($isRangeSelection(next)) $setSelection(next);
+            },
+            {
+              discrete: true,
+              skipTransforms: true,
+              tag: [SKIP_SCROLL_INTO_VIEW_TAG, SKIP_SELECTION_FOCUS_TAG],
+            },
+          );
+        },
+      }),
+      [editor],
+    );
+    return null;
+  },
+);
+
+export const MarkdownEditor = forwardRef<
+  MarkdownEditorHandle,
+  MarkdownEditorProps
+>(function MarkdownEditor(
+  {
+    initialMarkdown,
+    metadataHtml,
+    isActive,
+    suspendAutoFocus,
+    onChange,
+    onOutline,
+    onRoot,
+  },
+  ref,
+) {
   const initialMarkdownRef = useRef(initialMarkdown);
   const onRootRef = useRef(onRoot);
   onRootRef.current = onRoot;
@@ -275,7 +355,9 @@ export function MarkdownEditor({
                   aria-label="Markdown document"
                   aria-placeholder="Start writing…"
                   placeholder={
-                    <div className={styles.placeholder}>Start writing…</div>
+                    <div className={styles.placeholder} aria-hidden="true">
+                      Start writing…
+                    </div>
                   }
                 />
               }
@@ -293,7 +375,8 @@ export function MarkdownEditor({
       <MarkdownPastePlugin />
       <ExportOnChange onChange={onChange} />
       <OutlinePlugin isActive={isActive} onOutline={onOutline} />
-      <FocusWhenActive isActive={isActive} />
+      <FocusWhenActive isActive={isActive} suspendAutoFocus={suspendAutoFocus} />
+      <EditorSelectionHandle ref={ref} />
     </LexicalComposer>
   );
-}
+});

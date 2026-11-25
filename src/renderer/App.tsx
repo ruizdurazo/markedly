@@ -34,7 +34,16 @@ import {
   captureScrollAnchor,
   type ScrollAnchor,
 } from "./lib/scroll-anchor";
-import { MarkdownEditor } from "./MarkdownEditor";
+import {
+  MarkdownEditor,
+  type MarkdownEditorHandle,
+} from "./MarkdownEditor";
+import {
+  applyTextSelection,
+  captureTextSelection,
+  textSelectionMatches,
+  type TextSelectionAnchor,
+} from "./lib/text-selection";
 import { MarkdownBody, type MarkdownBodyHandle } from "./MarkdownBody";
 import statusStyles from "./StatusBar.module.scss";
 import SidebarLeftIcon from "../assets/icons/sidebar-left.svg?react";
@@ -261,6 +270,7 @@ export function App() {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const selectSearchQueryRef = useRef(false);
   const findScrollTargetKeyRef = useRef("");
   const markdownBodyHandlesRef = useRef(new Map<string, MarkdownBodyHandle>());
   const editorRootsRef = useRef(new Map<string, HTMLElement>());
@@ -269,6 +279,13 @@ export function App() {
   const ignoreScrollRef = useRef(false);
   const scrollSuppressGenerationRef = useRef(0);
   const pendingScrollAnchorRef = useRef<ScrollAnchor | null>(null);
+  const pendingTextSelectionRef = useRef<{
+    tabId: string;
+    fromEditing: boolean;
+    anchor: TextSelectionAnchor;
+  } | null>(null);
+  const editorSelectionRef = useRef(new Map<string, MarkdownEditorHandle>());
+  const buttonSelectionRef = useRef<TextSelectionAnchor | null>(null);
   const activePaneRef = useRef<HTMLDivElement | null>(null);
   const restoreModeScrollRef = useRef<() => void>(() => {});
   const suppressScrollRecording = () => {
@@ -284,6 +301,18 @@ export function App() {
     const scope = activePaneRef.current ?? sc;
     suppressScrollRecording();
     pendingScrollAnchorRef.current = captureScrollAnchor(sc, scope);
+  };
+  const rememberTextSelection = (
+    tabId: string,
+    fromEditing: boolean,
+    fallback: TextSelectionAnchor | null = null,
+  ) => {
+    const scope = activePaneRef.current;
+    const live = scope ? captureTextSelection(scope) : null;
+    const anchor = live ?? fallback;
+    pendingTextSelectionRef.current = anchor
+      ? { tabId, fromEditing, anchor }
+      : null;
   };
   const baseElRef = useRef<HTMLBaseElement | null>(null);
   const skipUnloadPromptRef = useRef(false);
@@ -1055,7 +1084,7 @@ export function App() {
     [getActiveTab, setBaseHref],
   );
 
-  const beginEditing = useCallback(() => {
+  const beginEditing = useCallback((fallback: TextSelectionAnchor | null = null) => {
     const tab = getActiveTab();
     if (!tab?.document || tab.editing) {
       void window.markedly.setEditingState(
@@ -1065,12 +1094,13 @@ export function App() {
       return;
     }
     rememberScrollAnchor();
+    rememberTextSelection(tab.id, false, fallback);
     setTabs((prev) =>
       prev.map((t) => (t.id === tab.id ? { ...t, editing: true } : t)),
     );
   }, [getActiveTab]);
 
-  const finishEditing = useCallback(async () => {
+  const finishEditing = useCallback(async (fallback: TextSelectionAnchor | null = null) => {
     const tab = getActiveTab();
     if (!tab?.document || !tab.editing) {
       void window.markedly.setEditingState(
@@ -1079,8 +1109,10 @@ export function App() {
       );
       return;
     }
+    rememberTextSelection(tab.id, true, fallback);
     const saved = await saveActiveTab(false);
     if (!saved) {
+      pendingTextSelectionRef.current = null;
       void window.markedly.setEditingState(true, true);
       return;
     }
@@ -1344,8 +1376,11 @@ export function App() {
         if (showWelcomeRef.current) return;
         const input = searchInputRef.current;
         if (input) {
+          selectSearchQueryRef.current = true;
+          input.dataset.querySelected = "";
           input.focus();
           input.select();
+          selectSearchQueryRef.current = false;
         }
       }),
       window.markedly.onSave(() => {
@@ -1406,8 +1441,11 @@ export function App() {
       e.preventDefault();
       const input = searchInputRef.current;
       if (input) {
+        selectSearchQueryRef.current = true;
+        input.dataset.querySelected = "";
         input.focus();
         input.select();
+        selectSearchQueryRef.current = false;
       }
     };
     window.addEventListener("keydown", onKeyDown, true);
@@ -1604,6 +1642,92 @@ export function App() {
 
   useEffect(() => {
     restoreModeScrollRef.current();
+  }, [activeEditing, activeTabId]);
+
+  useLayoutEffect(() => {
+    const pending = pendingTextSelectionRef.current;
+    const scope = activePaneRef.current;
+    if (
+      !pending ||
+      !scope ||
+      pending.tabId !== activeTabId ||
+      pending.fromEditing === activeEditing
+    ) {
+      return;
+    }
+
+    let stopped = false;
+    let didFocus = false;
+    let attempts = 0;
+    let frame = 0;
+    let timer = 0;
+    let observer: MutationObserver | null = null;
+    const scroller = scrollContainerRef.current;
+
+    const restoreScroll = () => {
+      if (!scroller) return;
+      const top = scroller.scrollTop;
+      const left = scroller.scrollLeft;
+      return () => {
+        scroller.scrollTop = top;
+        scroller.scrollLeft = left;
+      };
+    };
+
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      if (pendingTextSelectionRef.current === pending) {
+        pendingTextSelectionRef.current = null;
+      }
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+      observer?.disconnect();
+      scope.removeEventListener("pointerdown", onUser, true);
+      scope.removeEventListener("keydown", onUser, true);
+    };
+
+    const onUser = () => {
+      stop();
+    };
+
+    const restore = () => {
+      if (stopped || pendingTextSelectionRef.current !== pending) return;
+      const currentScope = activePaneRef.current;
+      if (!currentScope || currentScope !== scope) return;
+      if (textSelectionMatches(currentScope, pending.anchor)) return;
+      if (attempts >= 8) return;
+      attempts += 1;
+      const releaseScroll = restoreScroll();
+      const applied = applyTextSelection(currentScope, pending.anchor);
+      if (!applied) {
+        releaseScroll?.();
+        return;
+      }
+      const bridge = editorSelectionRef.current.get(pending.tabId);
+      if (bridge) {
+        bridge.adoptDocumentSelection(!didFocus);
+        didFocus = true;
+      }
+      releaseScroll?.();
+    };
+
+    observer = new MutationObserver(() => {
+      restore();
+    });
+
+    restore();
+    frame = requestAnimationFrame(() => {
+      restore();
+    });
+    observer.observe(scope, { subtree: true, childList: true });
+    scope.addEventListener("pointerdown", onUser, true);
+    scope.addEventListener("keydown", onUser, true);
+    timer = window.setTimeout(stop, 2500);
+
+    return () => {
+      stop();
+    };
   }, [activeEditing, activeTabId]);
 
   const tabStripTabs = useMemo(
@@ -1811,6 +1935,15 @@ export function App() {
     showWelcome,
   ]);
 
+  const collapseSearchSelection = (el: HTMLInputElement) => {
+    if (selectSearchQueryRef.current) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? start;
+    if (start === end) return;
+    const pos = el.selectionDirection === "backward" ? start : end;
+    el.setSelectionRange(pos, pos);
+  };
+
   return (
     <>
       <header className={appStyles.titlebar}>
@@ -1876,10 +2009,41 @@ export function App() {
                         className={appStyles.titlebarSearchInput}
                         value={searchQuery}
                         onChange={(e) => {
+                          delete e.currentTarget.dataset.querySelected;
                           setSearchQuery(e.target.value);
                           setSearchMatchIndex(0);
                         }}
+                        onMouseDown={(e) => {
+                          if (e.button !== 0) return;
+                          const el = e.currentTarget;
+                          delete el.dataset.querySelected;
+                          const collapse = () => collapseSearchSelection(el);
+                          const onMove = () => collapse();
+                          const onUp = () => {
+                            collapse();
+                            window.removeEventListener("mousemove", onMove);
+                            window.removeEventListener("mouseup", onUp);
+                          };
+                          window.addEventListener("mousemove", onMove);
+                          window.addEventListener("mouseup", onUp);
+                        }}
+                        onSelect={(e) => {
+                          collapseSearchSelection(e.currentTarget);
+                        }}
                         onKeyDown={(e) => {
+                          const modifier = e.metaKey || e.ctrlKey;
+                          if (modifier && e.key.toLowerCase() === "a") {
+                            e.preventDefault();
+                            return;
+                          }
+                          const findShortcut =
+                            modifier &&
+                            !e.altKey &&
+                            !e.shiftKey &&
+                            e.key.toLowerCase() === "f";
+                          if (!findShortcut) {
+                            delete e.currentTarget.dataset.querySelected;
+                          }
                           if (e.key === "Escape") {
                             setSearchQuery("");
                             e.currentTarget.blur();
@@ -1937,9 +2101,19 @@ export function App() {
                 <button
                   type="button"
                   className={appStyles.titlebarIconButton}
+                  onMouseDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.preventDefault();
+                    const scope = activePaneRef.current;
+                    buttonSelectionRef.current = scope
+                      ? captureTextSelection(scope)
+                      : null;
+                  }}
                   onClick={() => {
-                    if (activeEditing) void finishEditing();
-                    else beginEditing();
+                    const stashed = buttonSelectionRef.current;
+                    buttonSelectionRef.current = null;
+                    if (activeEditing) void finishEditing(stashed);
+                    else beginEditing(stashed);
                   }}
                   aria-label={activeEditing ? "Save and preview" : "Edit"}
                   aria-pressed={activeEditing}
@@ -2131,9 +2305,19 @@ export function App() {
                             {t.editing ? (
                               <MarkdownEditor
                                 key={`${t.id}:${cached.generation}`}
+                                ref={(handle) => {
+                                  if (handle) {
+                                    editorSelectionRef.current.set(t.id, handle);
+                                  } else {
+                                    editorSelectionRef.current.delete(t.id);
+                                  }
+                                }}
                                 initialMarkdown={cached.body}
                                 metadataHtml={cached.metadataHtml}
                                 isActive={isActive}
+                                suspendAutoFocus={
+                                  pendingTextSelectionRef.current?.tabId === t.id
+                                }
                                 onChange={(markdown) => {
                                   handleEditorMarkdown(t.id, markdown);
                                 }}
